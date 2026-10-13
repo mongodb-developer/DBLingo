@@ -7,7 +7,7 @@ const { useState: u_s, useEffect: u_e, useRef: u_r, useMemo: u_m, useCallback: u
  * ============================================================ */
 const COMPARISON_PACK_IDS = ['postgres'];
 
-function LandingScreen({ profile, packs, onStart }) {
+function LandingScreen({ profile, packs, onStart, event }) {
   const allPacks = Object.values(packs || {});
   const generalPack = packs.general;
   const comparisonPacks = allPacks.filter(pack => COMPARISON_PACK_IDS.includes(pack.id));
@@ -21,7 +21,16 @@ function LandingScreen({ profile, packs, onStart }) {
     selectedPackId: profile?.selectedPackId || 'general'
   });
 
+  // An event invite may pin everyone to one assignment so scores are comparable.
+  const lockedPackId = event && event.pack && packs[event.pack] ? event.pack : null;
+  u_e(() => {
+    if (!lockedPackId) return;
+    const pathType = lockedPackId === 'general' ? 'general' : (COMPARISON_PACK_IDS.includes(lockedPackId) ? 'comparison' : 'industry');
+    setDraft(prev => ({ ...prev, pathType, selectedPackId: lockedPackId }));
+  }, [lockedPackId]);
+
   function selectPath(pathType) {
+    if (lockedPackId) return;
     const selectedPackId = pathType === 'general'
       ? 'general'
       : pathType === 'industry'
@@ -36,7 +45,7 @@ function LandingScreen({ profile, packs, onStart }) {
   return (
     <div className="ml-landing">
       <section className="ml-landing__hero">
-        <div className="ml-landing__eyebrow">MongoLingo assignment</div>
+        <div className="ml-landing__eyebrow">{event ? 'Event invite' : 'MongoLingo assignment'}</div>
         <h1>Choose the learning path that fits the conversation.</h1>
         <p>
           Start with MongoDB foundations, tailor the exercise path to an industry,
@@ -44,7 +53,21 @@ function LandingScreen({ profile, packs, onStart }) {
         </p>
       </section>
 
-      <section className="ml-landing__panel">
+      {event && (
+        <div className="ml-event-banner" role="status">
+          <Icon name="Person" size={16} color="var(--lg-spring)" />
+          <div>
+            <strong>You're joining {event.name}</strong>
+            <span>
+              Your XP will rank on this event's leaderboard.
+              {lockedPackId && <> Everyone plays the <b>{packs[lockedPackId].name}</b> assignment.</>}
+              {event.status === 'upcoming' && event.startsAt && <> Scoring starts {new Date(event.startsAt).toLocaleString()}.</>}
+            </span>
+          </div>
+        </div>
+      )}
+
+      <section className="ml-landing__panel" data-locked={!!lockedPackId}>
         <div className="ml-form-grid">
           <label className="ml-field">
             <span>Your name</span>
@@ -64,7 +87,7 @@ function LandingScreen({ profile, packs, onStart }) {
           </label>
         </div>
 
-        <div className="ml-path-grid" role="radiogroup" aria-label="Assignment path">
+        {!lockedPackId && <div className="ml-path-grid" role="radiogroup" aria-label="Assignment path">
           <PathCard
             selected={draft.pathType === 'general'}
             title="General"
@@ -102,11 +125,11 @@ function LandingScreen({ profile, packs, onStart }) {
               {comparisonPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.name}</option>)}
             </select>
           </PathCard>
-        </div>
+        </div>}
 
         <div className="ml-assignment-summary">
           <div>
-            <div className="ml-pane__label">Selected assignment</div>
+            <div className="ml-pane__label">{lockedPackId ? 'Event assignment' : 'Selected assignment'}</div>
             <strong>{selectedPack?.name || 'General MongoDB Foundations'}</strong>
             <p>{selectedPack?.description || selectedPack?.promise}</p>
           </div>
@@ -115,7 +138,7 @@ function LandingScreen({ profile, packs, onStart }) {
             disabled={!canStart}
             onClick={() => onStart({ ...draft, learnerName: draft.learnerName.trim(), company: draft.company.trim() })}
           >
-            Start Assignment <Icon name="ChevronRight" size={13} color="currentColor" />
+            {event ? 'Join event' : 'Start Assignment'} <Icon name="ChevronRight" size={13} color="currentColor" />
           </button>
         </div>
       </section>
@@ -151,7 +174,7 @@ function PathCard({ selected, title, badge, description, children, onClick }) {
 /* ============================================================
  * Home / world map
  * ============================================================ */
-function HomeScreen({ progress, setView, totalXp, debugUnlockAll = false, industryId, setIndustryId, profile, onChangeAssignment, onShowSkillBadges }) {
+function HomeScreen({ progress, setView, totalXp, debugUnlockAll = false, industryId, setIndustryId, profile, onChangeAssignment, onShowSkillBadges, onLeaveEvent }) {
   const industries = window.MONGOLINGO_INDUSTRIES || {};
   const currentPack = industries[industryId] || industries.general || {};
   return (
@@ -173,6 +196,17 @@ function HomeScreen({ progress, setView, totalXp, debugUnlockAll = false, indust
               <small>{profile.learnerName} · {profile.company}</small>
             </div>
             {onChangeAssignment && <button className="ml-btn ml-btn--ghost ml-btn--sm" onClick={onChangeAssignment}>Change path</button>}
+          </div>
+        )}
+        {profile?.onboardingComplete && profile.eventId && (
+          <div className="ml-assignment-chip ml-assignment-chip--event">
+            <div>
+              <span>Event</span>
+              <strong>{profile.eventName || profile.eventId}</strong>
+              <small>XP you earn counts on the event leaderboard</small>
+            </div>
+            <button className="ml-btn ml-btn--primary ml-btn--sm" onClick={() => setView({ name: 'leaderboard' })}>Standings</button>
+            {onLeaveEvent && <button className="ml-btn ml-btn--ghost ml-btn--sm" onClick={onLeaveEvent}>Leave</button>}
           </div>
         )}
       </div>
@@ -771,7 +805,70 @@ const STUB_LEADERS = [
   { name: 'Donald K.',  xp: 2018, leaves: 9  }
 ];
 
-function LeaderboardScreen({ totalXp, leaves, name = 'Ada L.', pack }) {
+/** Copy text with the async Clipboard API, falling back to execCommand. */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+/* The one shareable URL for an event, with copy / native-share buttons. */
+function InviteLinkField({ eventId, eventName }) {
+  const link = window.MongoLingoAPI ? window.MongoLingoAPI.getInviteLink(eventId) : '';
+  const [copied, setCopied] = u_s(false);
+  const inputRef = u_r(null);
+  const canShare = typeof navigator !== 'undefined' && !!navigator.share;
+
+  async function onCopy() {
+    const ok = await copyText(link);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } else if (inputRef.current) {
+      inputRef.current.select();
+    }
+  }
+
+  return (
+    <div className="ml-invite-link">
+      <input
+        ref={inputRef}
+        readOnly
+        value={link}
+        aria-label={`Invite link for ${eventName || eventId}`}
+        onFocus={(e) => e.target.select()}
+      />
+      <button className="ml-btn ml-btn--primary" onClick={onCopy}>
+        {copied ? 'Link copied ✓' : 'Copy link'}
+      </button>
+      {canShare && (
+        <button
+          className="ml-btn ml-btn--ghost"
+          onClick={() => navigator.share({ title: `MongoLingo · ${eventName || 'Event'}`, text: `Join me on the ${eventName || 'MongoLingo'} leaderboard!`, url: link }).catch(() => {})}
+        >Share…</button>
+      )}
+    </div>
+  );
+}
+
+function LeaderboardScreen({ totalXp, leaves, name = 'Ada L.', pack, eventId, eventName }) {
   const me = { name: 'You (' + name + ')', xp: totalXp, leaves, me: true };
   const stubBoard = [...STUB_LEADERS, me]
     .sort((a, b) => b.xp - a.xp)
@@ -781,39 +878,59 @@ function LeaderboardScreen({ totalXp, leaves, name = 'Ada L.', pack }) {
   // ONLY when no backend is configured. When the API is enabled we show a
   // loading state, then real data (or an empty/error state) — never the stub.
   const apiEnabled = !!(window.MongoLingoAPI && window.MongoLingoAPI.apiEnabled());
+  const hasEvent = apiEnabled && !!eventId;
+  const [scope, setScope] = u_s(hasEvent ? 'event' : 'global'); // event | global
+  const showingEvent = hasEvent && scope === 'event';
   const [liveBoard, setLiveBoard] = u_s(null);
   const [status, setStatus] = u_s(apiEnabled ? 'loading' : 'stub'); // loading | ready | error | stub
+
+  u_e(() => { if (!hasEvent) setScope('global'); }, [hasEvent]);
 
   u_e(() => {
     if (!apiEnabled) return;
     let cancelled = false;
     setStatus('loading');
-    window.MongoLingoAPI
-      .fetchLeaderboard({ pack, limit: 5 })
-      .then((leaders) => {
-        if (cancelled) return;
-        if (!leaders) { setStatus('error'); return; }
-        const myId = window.MongoLingoAPI.getUserId();
-        setLiveBoard(leaders.map((row) => ({
-          name: row.name || 'Anonymous',
-          xp: row.xp || 0,
-          leaves: row.leaves || 0,
-          me: row.userId === myId
-        })));
-        setStatus('ready');
-      });
-    return () => { cancelled = true; };
-  }, [apiEnabled, pack, totalXp, leaves]);
+    // Small delay lets the debounced score sync land before we read.
+    const t = setTimeout(() => {
+      window.MongoLingoAPI
+        .fetchLeaderboard(showingEvent ? { eventId, limit: 10 } : { pack, limit: 5 })
+        .then((leaders) => {
+          if (cancelled) return;
+          if (!leaders) { setStatus('error'); return; }
+          const myId = window.MongoLingoAPI.getUserId();
+          setLiveBoard(leaders.map((row) => ({
+            name: row.name || 'Anonymous',
+            xp: row.xp || 0,
+            leaves: row.leaves || 0,
+            me: row.userId === myId
+          })));
+          setStatus('ready');
+        });
+    }, 900);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [apiEnabled, pack, showingEvent, eventId, totalXp, leaves]);
 
   const board = status === 'stub' ? stubBoard : (liveBoard || []);
   const live = apiEnabled;
 
   return (
     <div className="ml-leaderboard">
-      <h2>Weekly leaderboard</h2>
-      <p>{live
-        ? 'Top MongoLingo learners — live from the leaderboard service.'
-        : 'Top five MongoLingo learners this week. Resets every Monday.'}</p>
+      {hasEvent && (
+        <div className="ml-lb-tabs" role="tablist" aria-label="Leaderboard scope">
+          <button role="tab" aria-selected={scope === 'event'} onClick={() => setScope('event')}>
+            {eventName || 'Event'}
+          </button>
+          <button role="tab" aria-selected={scope === 'global'} onClick={() => setScope('global')}>
+            Global
+          </button>
+        </div>
+      )}
+      <h2>{showingEvent ? (eventName || 'Event leaderboard') : 'Weekly leaderboard'}</h2>
+      <p>{showingEvent
+        ? 'Event standings — ranked by XP earned since each player joined.'
+        : live
+          ? 'Top MongoLingo learners — live from the leaderboard service.'
+          : 'Top five MongoLingo learners this week. Resets every Monday.'}</p>
       <div className="ml-lb-list">
         {status === 'loading' && (
           <div className="ml-lb-row ml-lb-row--status"><div className="ml-lb-name">Loading leaderboard…</div></div>
@@ -833,15 +950,170 @@ function LeaderboardScreen({ totalXp, leaves, name = 'Ada L.', pack }) {
           </div>
         ))}
       </div>
-      <div className="ml-invite">
-        <h3>Climb faster with friends.</h3>
-        <p>Pair-program through a world. Compare leaf counts. Bragging rights included.</p>
-        <button className="ml-btn ml-btn--primary">
-          <Icon name="Person" size={13} color="currentColor" /> Invite a teammate
-        </button>
-      </div>
+      {showingEvent ? (
+        <div className="ml-invite">
+          <h3>Invite people to {eventName || 'this event'}.</h3>
+          <p>Everyone who opens this link plays on the same event leaderboard.</p>
+          <InviteLinkField eventId={eventId} eventName={eventName} />
+        </div>
+      ) : (
+        <div className="ml-invite">
+          <h3>Climb faster with friends.</h3>
+          <p>
+            {hasEvent
+              ? 'Switch to the event tab to grab your event\'s invite link.'
+              : 'Running a workshop or meetup? Ask an organiser for an event invite link — everyone who opens it competes on a private leaderboard.'}
+          </p>
+          {hasEvent && (
+            <button className="ml-btn ml-btn--primary" onClick={() => setScope('event')}>
+              <Icon name="Person" size={13} color="currentColor" /> Invite to {eventName || 'event'}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-Object.assign(window, { LandingScreen, HomeScreen, LevelScreen, ChallengeScreen, LeaderboardScreen });
+/* ============================================================
+ * Admin: create event leaderboards (open with ?admin)
+ * Requires the backend ADMIN_KEY. The key is kept only in
+ * sessionStorage for this tab and sent as a Bearer token.
+ * ============================================================ */
+const ADMIN_KEY_STORAGE = 'mongolingo.adminKey';
+const EMPTY_EVENT_FORM = { name: '', eventId: '', pack: '', startsAt: '', endsAt: '' };
+
+function AdminEventsScreen({ packs }) {
+  const api = window.MongoLingoAPI;
+  const [adminKey, setAdminKey] = u_s(() => {
+    try { return sessionStorage.getItem(ADMIN_KEY_STORAGE) || ''; } catch (e) { return ''; }
+  });
+  const [form, setForm] = u_s(EMPTY_EVENT_FORM);
+  const [busy, setBusy] = u_s(false);
+  const [error, setError] = u_s('');
+  const [created, setCreated] = u_s(null);
+  const [events, setEvents] = u_s(null);
+
+  function rememberKey(value) {
+    setAdminKey(value);
+    try { sessionStorage.setItem(ADMIN_KEY_STORAGE, value); } catch (e) {}
+  }
+
+  async function refreshEvents() {
+    if (!adminKey) return;
+    const res = await api.listEvents(adminKey);
+    if (res && !res.error) setEvents(res.events || []);
+    else setError(res?.error || 'Could not load events');
+  }
+
+  // datetime-local gives local time without a zone; convert to ISO (UTC).
+  const toIso = (v) => (v ? new Date(v).toISOString() : undefined);
+  const setField = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
+
+  async function onCreate(e) {
+    e.preventDefault();
+    setBusy(true); setError(''); setCreated(null);
+    const res = await api.createEvent(adminKey, {
+      name: form.name.trim(),
+      eventId: form.eventId.trim().toLowerCase(),
+      pack: form.pack,
+      startsAt: toIso(form.startsAt),
+      endsAt: toIso(form.endsAt)
+    });
+    setBusy(false);
+    if (!res || res.error) { setError(res?.error || 'Could not create event'); return; }
+    setCreated(res.event);
+    setForm(EMPTY_EVENT_FORM);
+    if (events) refreshEvents();
+  }
+
+  if (!api || !api.apiEnabled()) {
+    return (
+      <div className="ml-leaderboard">
+        <h2>Event admin</h2>
+        <p>The backend isn't configured (window.MONGOLINGO_API_BASE), so events can't be created.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ml-leaderboard ml-admin">
+      <h2>Event leaderboards</h2>
+      <p>Create an event, then share its invite link. Each event has exactly one link.</p>
+
+      <form className="ml-landing__panel ml-admin__form" onSubmit={onCreate}>
+        <label className="ml-field">
+          <span>Admin key</span>
+          <input type="password" autoComplete="off" value={adminKey}
+                 placeholder="ADMIN_KEY from the backend"
+                 onChange={(e) => rememberKey(e.target.value)} />
+        </label>
+        <div className="ml-form-grid">
+          <label className="ml-field">
+            <span>Event name *</span>
+            <input required maxLength={80} value={form.name} placeholder="MongoDB.local NYC" onChange={setField('name')} />
+          </label>
+          <label className="ml-field">
+            <span>Link slug (optional)</span>
+            <input value={form.eventId} placeholder="auto, e.g. mdb-local-nyc"
+                   pattern="[a-z0-9][a-z0-9\-]{2,47}"
+                   title="3-48 chars: lowercase letters, digits and dashes"
+                   onChange={setField('eventId')} />
+          </label>
+          <label className="ml-field">
+            <span>Assignment (optional — locks everyone to one path)</span>
+            <select value={form.pack} onChange={setField('pack')}>
+              <option value="">Any — players choose</option>
+              {Object.values(packs || {}).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <div />
+          <label className="ml-field">
+            <span>Starts (optional)</span>
+            <input type="datetime-local" value={form.startsAt} onChange={setField('startsAt')} />
+          </label>
+          <label className="ml-field">
+            <span>Ends (optional)</span>
+            <input type="datetime-local" value={form.endsAt} onChange={setField('endsAt')} />
+          </label>
+        </div>
+        {error && <div className="ml-admin__error" role="alert">{error}</div>}
+        <div className="ml-event-actions">
+          <button type="button" className="ml-btn ml-btn--ghost" disabled={!adminKey} onClick={() => { setError(''); refreshEvents(); }}>
+            Show existing events
+          </button>
+          <button type="submit" className="ml-btn ml-btn--primary" disabled={busy || !adminKey || !form.name.trim()}>
+            {busy ? 'Creating…' : 'Create event'}
+          </button>
+        </div>
+      </form>
+
+      {created && (
+        <div className="ml-invite">
+          <h3>"{created.name}" is ready.</h3>
+          <p>Share this link — it's the single invite URL for this event.</p>
+          <InviteLinkField eventId={created.eventId} eventName={created.name} />
+        </div>
+      )}
+
+      {events && (
+        <div className="ml-lb-list ml-admin__events">
+          {events.length === 0 && (
+            <div className="ml-lb-row ml-lb-row--status"><div className="ml-lb-name">No events yet.</div></div>
+          )}
+          {events.map(ev => (
+            <div key={ev.eventId} className="ml-admin__event">
+              <div>
+                <strong>{ev.name}</strong>
+                <small>{ev.status}{ev.pack ? ` · ${packs[ev.pack]?.name || ev.pack}` : ''}{ev.endsAt ? ` · ends ${new Date(ev.endsAt).toLocaleString()}` : ''}</small>
+              </div>
+              <InviteLinkField eventId={ev.eventId} eventName={ev.name} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+Object.assign(window, { LandingScreen, HomeScreen, LevelScreen, ChallengeScreen, LeaderboardScreen, AdminEventsScreen, COMPARISON_PACK_IDS });

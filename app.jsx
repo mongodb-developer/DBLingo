@@ -11,8 +11,36 @@ function defaultProfile() {
     company: '',
     pathType: 'general',
     selectedPackId: 'general',
-    onboardingComplete: false
+    onboardingComplete: false,
+    // Event leaderboard the learner joined via an invite link (?event=<id>).
+    eventId: '',
+    eventName: '',
+    eventPack: null
   };
+}
+
+/* Invite links look like <app>?event=<eventId>; organisers use <app>?admin. */
+function readUrlParams() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      eventId: (params.get('event') || '').trim().toLowerCase(),
+      admin: params.has('admin')
+    };
+  } catch (e) {
+    return { eventId: '', admin: false };
+  }
+}
+const URL_PARAMS = readUrlParams();
+
+/** Drop ?event= from the address bar once handled so a reload doesn't re-prompt. */
+function clearEventParam() {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('event')) return;
+    url.searchParams.delete('event');
+    window.history.replaceState(null, '', url.toString());
+  } catch (e) {}
 }
 
 function loadProfile() {
@@ -112,6 +140,71 @@ function SkillBadgeModal({ world, onClose }) {
   );
 }
 
+/* Invite-link modal: join prompt for already-onboarded learners, or a notice
+ * when the link is invalid / the event has ended. */
+function EventInviteModal({ dialog, profile, packs, onJoin, onClose }) {
+  const primaryRef = React.useRef(null);
+  useEffect_(() => {
+    if (!dialog) return;
+    primaryRef.current && primaryRef.current.focus();
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dialog]);
+
+  if (!dialog) return null;
+  const { kind, event } = dialog;
+  const packSwitch = kind === 'join' && event.pack && event.pack !== profile.selectedPackId;
+  const packName = event?.pack ? (packs[event.pack]?.name || event.pack) : null;
+
+  let eyebrow, title, body;
+  if (kind === 'invalid') {
+    eyebrow = 'INVITE LINK';
+    title = "This event link isn't valid";
+    body = <>The event may have been removed, or the link was mistyped. You can keep playing — your XP still counts on the global leaderboard.</>;
+  } else if (kind === 'ended') {
+    eyebrow = 'EVENT ENDED';
+    title = event.name;
+    body = <>This event has finished, so new scores no longer count. You can keep playing on the global leaderboard.</>;
+  } else {
+    eyebrow = event.status === 'upcoming' ? 'UPCOMING EVENT' : "YOU'RE INVITED";
+    title = `Join ${event.name}`;
+    body = (
+      <>
+        Compete on this event's leaderboard. Only XP you earn from now on counts.
+        {profile.eventId && <> You'll leave <b>{profile.eventName || 'your current event'}</b>.</>}
+        {event.status === 'upcoming' && <> Scoring starts {new Date(event.startsAt).toLocaleString()}.</>}
+        {packSwitch && <> This event uses the <b>{packName}</b> assignment — joining switches your path and <b>resets your current progress</b>.</>}
+      </>
+    );
+  }
+
+  return (
+    <div className="ml-skill-badges" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="ml-event-invite-title">
+      <div className="ml-skill-badges__panel" onClick={(e) => e.stopPropagation()}>
+        <div className="ml-skill-badges__icon" aria-hidden="true">
+          <Icon name="Person" size={24} color="var(--lg-spring)" />
+        </div>
+        <div className="ml-skill-badges__eyebrow">{eyebrow}</div>
+        <h2 id="ml-event-invite-title">{title}</h2>
+        <p>{body}</p>
+        <div className="ml-event-actions">
+          {kind === 'join' ? (
+            <>
+              <button className="ml-btn ml-btn--ghost" onClick={onClose}>Not now</button>
+              <button ref={primaryRef} className="ml-btn ml-btn--primary" onClick={() => onJoin(event)}>
+                {packSwitch ? 'Switch & join' : 'Join event'}
+              </button>
+            </>
+          ) : (
+            <button ref={primaryRef} className="ml-btn ml-btn--primary" onClick={onClose}>Keep playing</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [tweaks, setTweak] = useTweaks(/*EDITMODE-BEGIN*/{
     "accent": "#00ED64",
@@ -121,11 +214,15 @@ function App() {
   }/*EDITMODE-END*/);
 
   const [state, setState] = useState_(loadProgress());
-  const [view, setView]   = useState_({ name: 'home' });
+  const [view, setView]   = useState_({ name: URL_PARAMS.admin ? 'admin' : 'home' });
   const [celebrate, setCelebrate] = useState_(null); // { xp, leaf, perfect }
   const [skillBadgeWorld, setSkillBadgeWorld] = useState_(null);
   const [unlockAll, setUnlockAll] = useState_(false);
   const [profile, setProfile] = useState_(loadProfile());
+  // Event resolved from an invite link that the learner hasn't joined yet.
+  const [pendingEvent, setPendingEvent] = useState_(null);
+  // { kind: 'invalid' | 'ended' | 'join', event? } — drives the invite modal.
+  const [inviteDialog, setInviteDialog] = useState_(null);
   const [industryId, setIndustryId] = useState_(() => {
     try {
       const savedProfile = loadProfile();
@@ -207,18 +304,104 @@ function App() {
   const debugUnlockAll = unlockAll;
 
   function startAssignment(nextProfile) {
-    const completeProfile = { ...nextProfile, onboardingComplete: true };
+    const joining = pendingEvent;
+    const completeProfile = {
+      ...profile, // keep existing event membership across "Change path"
+      ...nextProfile,
+      onboardingComplete: true,
+      ...(joining ? { eventId: joining.eventId, eventName: joining.name, eventPack: joining.pack || null } : {})
+    };
     setProfile(completeProfile);
     setIndustryId(completeProfile.selectedPackId || 'general');
     setView({ name: 'home' });
+    if (joining) { setPendingEvent(null); clearEventParam(); }
     // Register the learner with the optional backend (no-op if API_BASE unset).
     if (window.MongoLingoAPI) {
       window.MongoLingoAPI.registerUser({
         name: completeProfile.learnerName,
         company: completeProfile.company,
-        pack: completeProfile.selectedPackId || 'general'
+        pack: completeProfile.selectedPackId || 'general',
+        eventId: completeProfile.eventId
       });
     }
+  }
+
+  // Resolve an invite link (?event=<id>) once on load.
+  useEffect_(() => {
+    const inviteId = URL_PARAMS.eventId;
+    if (!inviteId || URL_PARAMS.admin) return;
+    if (!window.MongoLingoAPI || !window.MongoLingoAPI.apiEnabled()) { clearEventParam(); return; }
+    let cancelled = false;
+    window.MongoLingoAPI.fetchEvent(inviteId).then((event) => {
+      if (cancelled) return;
+      const current = loadProfile();
+      if (!event) {
+        clearEventParam();
+        setInviteDialog({ kind: 'invalid' });
+        return;
+      }
+      if (event.status === 'ended') {
+        clearEventParam();
+        setInviteDialog({ kind: 'ended', event });
+        return;
+      }
+      if (current.eventId === event.eventId) {
+        // Already joined — just refresh the cached name / pack.
+        clearEventParam();
+        setProfile(prev => ({ ...prev, eventName: event.name, eventPack: event.pack || null }));
+        return;
+      }
+      if (!current.onboardingComplete) {
+        // New learner: the landing screen shows the event and locks its pack.
+        setPendingEvent(event);
+        setView({ name: 'landing' });
+        return;
+      }
+      setInviteDialog({ kind: 'join', event });
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  /** Join an event as an already-onboarded learner. */
+  function joinEvent(event) {
+    const packSwitch = event.pack && event.pack !== profile.selectedPackId;
+    let nextProfile = { ...profile, eventId: event.eventId, eventName: event.name, eventPack: event.pack || null };
+    if (packSwitch) {
+      // Switching assignment discards progress, same as "Change path".
+      try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+      setState(defaultProgress());
+      const pack = (window.MONGOLINGO_INDUSTRIES || {})[event.pack];
+      const comparisonIds = typeof COMPARISON_PACK_IDS !== 'undefined' ? COMPARISON_PACK_IDS : ['postgres'];
+      nextProfile = {
+        ...nextProfile,
+        selectedPackId: event.pack,
+        pathType: event.pack === 'general' ? 'general' : (comparisonIds.includes(event.pack) ? 'comparison' : 'industry')
+      };
+      if (pack) setIndustryId(event.pack);
+    }
+    setProfile(nextProfile);
+    setInviteDialog(null);
+    clearEventParam();
+    setView({ name: 'leaderboard' });
+    if (window.MongoLingoAPI) {
+      window.MongoLingoAPI.registerUser({
+        name: nextProfile.learnerName,
+        company: nextProfile.company,
+        pack: nextProfile.selectedPackId || 'general',
+        eventId: event.eventId
+      });
+    }
+  }
+
+  function dismissInvite() {
+    setInviteDialog(null);
+    clearEventParam();
+  }
+
+  function leaveEvent() {
+    const ok = window.confirm(`Leave "${profile.eventName || 'this event'}"? Your score stays on its leaderboard, but new XP won't count toward it.`);
+    if (!ok) return;
+    setProfile(prev => ({ ...prev, eventId: '', eventName: '', eventPack: null }));
   }
 
   // Debounced score sync to the optional backend whenever progress changes.
@@ -232,11 +415,12 @@ function App() {
         streak: state.streak || 0,
         pack: industryId,
         name: profile.learnerName,
-        company: profile.company
+        company: profile.company,
+        eventId: profile.eventId
       });
     }, 800);
     return () => clearTimeout(t);
-  }, [state.xp, state.leaves, state.streak, industryId, profile.onboardingComplete]);
+  }, [state.xp, state.leaves, state.streak, industryId, profile.onboardingComplete, profile.eventId]);
 
   function changeAssignment() {
     if (hasAnyProgress(state)) {
@@ -249,17 +433,16 @@ function App() {
     setView({ name: 'landing' });
   }
 
+  const landing = <LandingScreen profile={profile} packs={window.MONGOLINGO_INDUSTRIES || {}} onStart={startAssignment} event={pendingEvent} />;
+  const home = <HomeScreen progress={state.progress} setView={setView} totalXp={state.xp} debugUnlockAll={debugUnlockAll} industryId={industryId} setIndustryId={setIndustryId} profile={profile} onChangeAssignment={changeAssignment} onShowSkillBadges={showSkillBadges} onLeaveEvent={leaveEvent} />;
+
   let screen;
   switch (view.name) {
     case 'landing':
-      screen = <LandingScreen profile={profile} packs={window.MONGOLINGO_INDUSTRIES || {}} onStart={startAssignment} />;
+      screen = landing;
       break;
     case 'home':
-      if (!profile.onboardingComplete) {
-        screen = <LandingScreen profile={profile} packs={window.MONGOLINGO_INDUSTRIES || {}} onStart={startAssignment} />;
-      } else {
-        screen = <HomeScreen progress={state.progress} setView={setView} totalXp={state.xp} debugUnlockAll={debugUnlockAll} industryId={industryId} setIndustryId={setIndustryId} profile={profile} onChangeAssignment={changeAssignment} onShowSkillBadges={showSkillBadges} />;
-      }
+      screen = profile.onboardingComplete ? home : landing;
       break;
     case 'level':
       screen = <LevelScreen
@@ -285,12 +468,16 @@ function App() {
                  }} />;
       break;
     case 'leaderboard':
-      screen = <LeaderboardScreen totalXp={state.xp} leaves={state.leaves} name={profile.learnerName || 'You'} pack={industryId} />;
+      screen = <LeaderboardScreen
+                 totalXp={state.xp} leaves={state.leaves}
+                 name={profile.learnerName || 'You'} pack={industryId}
+                 eventId={profile.eventId} eventName={profile.eventName} />;
+      break;
+    case 'admin':
+      screen = <AdminEventsScreen packs={window.MONGOLINGO_INDUSTRIES || {}} />;
       break;
     default:
-      screen = profile.onboardingComplete
-        ? <HomeScreen progress={state.progress} setView={setView} totalXp={state.xp} debugUnlockAll={debugUnlockAll} industryId={industryId} setIndustryId={setIndustryId} profile={profile} onChangeAssignment={changeAssignment} onShowSkillBadges={showSkillBadges} />
-        : <LandingScreen profile={profile} packs={window.MONGOLINGO_INDUSTRIES || {}} onStart={startAssignment} />;
+      screen = profile.onboardingComplete ? home : landing;
   }
 
   return (
@@ -317,6 +504,13 @@ function App() {
       <SkillBadgeModal
         world={skillBadgeWorld}
         onClose={() => setSkillBadgeWorld(null)}
+      />
+      <EventInviteModal
+        dialog={inviteDialog}
+        profile={profile}
+        packs={window.MONGOLINGO_INDUSTRIES || {}}
+        onJoin={joinEvent}
+        onClose={dismissInvite}
       />
 
       {/* Tweaks panel */}

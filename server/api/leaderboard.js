@@ -2,26 +2,52 @@
  * /api/leaderboard
  *
  * GET  ?pack=general&limit=10
- *   -> { ok, leaders: [{ name, company, pack, xp, leaves, streak, rank }] }
+ *   -> { ok, leaders: [{ userId, name, pack, xp, leaves, streak, rank }] }
+ * GET  ?event=<eventId>&limit=10
+ *   -> { ok, event, leaders: [...] }   ranked by XP earned during the event
  *
- * POST { userId, xp, leaves?, streak? }
+ * POST { userId, xp, leaves?, streak?, eventId? }
  *   -> updates a player's score (latest wins) and returns their rank.
+ *      With eventId (and the event live), also updates the event score
+ *      and returns { event: { eventId, xp, leaves, rank } }.
  *
  * The player must already exist (via /api/register). If not, POST upserts
  * a minimal record so a score is never lost.
  */
-import { getPlayers } from './_db.js';
+import { getPlayers, getEventScores } from './_db.js';
 import { handlePreflight, readJsonBody } from './_cors.js';
+import { findEvent, publicEvent, upsertEventScore } from './_events.js';
 
 function toInt(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : fallback;
 }
 
+async function handleEventGet(res, eventId, limit) {
+  const event = await findEvent(eventId);
+  if (!event) return res.status(404).json({ error: 'Event not found' });
+
+  const scores = await getEventScores();
+  const leaders = await scores
+    .find(
+      { eventId: event.eventId },
+      { projection: { _id: 0, userId: 1, name: 1, xp: 1, leaves: 1, streak: 1 } }
+    )
+    .sort({ xp: -1, updatedAt: 1 })
+    .limit(limit)
+    .toArray();
+
+  const ranked = leaders.map((p, i) => ({ ...p, rank: i + 1 }));
+  return res.status(200).json({ ok: true, event: publicEvent(event), leaders: ranked });
+}
+
 async function handleGet(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const pack = url.searchParams.get('pack');
+  const eventId = url.searchParams.get('event');
   const limit = Math.min(toInt(url.searchParams.get('limit'), 10) || 10, 100);
+
+  if (eventId) return handleEventGet(res, eventId, limit);
 
   const filter = pack ? { pack } : {};
 
@@ -37,7 +63,7 @@ async function handleGet(req, res) {
 }
 
 async function handlePost(req, res) {
-  const { userId, xp, leaves, streak, name, company, pack } = readJsonBody(req);
+  const { userId, xp, leaves, streak, name, company, pack, eventId } = readJsonBody(req);
 
   if (!userId || typeof userId !== 'string') {
     return res.status(400).json({ error: 'userId is required' });
@@ -68,7 +94,15 @@ async function handlePost(req, res) {
     xp: { $gt: me?.xp ?? 0 }
   });
 
-  return res.status(200).json({ ok: true, player: me, rank: ahead + 1 });
+  const event = eventId
+    ? await upsertEventScore({
+      eventId, userId,
+      xp: set.xp, leaves: set.leaves, streak: set.streak,
+      name: me?.name, company: me?.company
+    })
+    : null;
+
+  return res.status(200).json({ ok: true, player: me, rank: ahead + 1, event });
 }
 
 export default async function handler(req, res) {

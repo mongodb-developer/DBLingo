@@ -37,22 +37,46 @@ export async function getDb() {
   return client.db(dbName);
 }
 
-let indexesEnsured = globalThis.__mongolingoIndexesEnsured || false;
+/** Per-collection "indexes ensured" flags, shared across hot reloads. */
+const ensured = globalThis.__mongolingoIndexesEnsuredMap || (globalThis.__mongolingoIndexesEnsuredMap = {});
 
-/** Ensure indexes once per warm lambda. Safe to call on every request. */
-export async function getPlayers() {
+/**
+ * Return a collection, ensuring its indexes once per warm lambda.
+ * Index creation is best-effort; a failure never fails the request.
+ */
+async function getCollection(name, ensureIndexes) {
   const db = await getDb();
-  const players = db.collection('players');
-  if (!indexesEnsured) {
+  const collection = db.collection(name);
+  if (!ensured[name]) {
     try {
-      await players.createIndex({ userId: 1 }, { unique: true });
-      await players.createIndex({ pack: 1, xp: -1 });
-      indexesEnsured = true;
-      globalThis.__mongolingoIndexesEnsured = true;
+      await ensureIndexes(collection);
+      ensured[name] = true;
     } catch (e) {
-      // Index creation is best-effort; don't fail the request over it.
-      console.warn('[mongolingo] index ensure failed:', e?.message);
+      console.warn(`[mongolingo] index ensure failed for ${name}:`, e?.message);
     }
   }
-  return players;
+  return collection;
+}
+
+/** Global player records: one per userId. */
+export function getPlayers() {
+  return getCollection('players', async (players) => {
+    await players.createIndex({ userId: 1 }, { unique: true });
+    await players.createIndex({ pack: 1, xp: -1 });
+  });
+}
+
+/** Event definitions (admin-created). One per URL-safe eventId slug. */
+export function getEvents() {
+  return getCollection('events', async (events) => {
+    await events.createIndex({ eventId: 1 }, { unique: true });
+  });
+}
+
+/** Per-event scores: one per (eventId, userId). xp = XP earned during the event. */
+export function getEventScores() {
+  return getCollection('event_scores', async (scores) => {
+    await scores.createIndex({ eventId: 1, userId: 1 }, { unique: true });
+    await scores.createIndex({ eventId: 1, xp: -1, updatedAt: 1 });
+  });
 }

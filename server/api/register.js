@@ -1,12 +1,15 @@
 /**
  * POST /api/register
- * Body: { userId, name, company?, pack? }
+ * Body: { userId, name, company?, pack?, eventId? }
  *
  * Upserts a player record. Called when a learner starts an assignment.
- * Returns the stored player document (without _id).
+ * If eventId is given (and the event is live), also joins that event's
+ * leaderboard, snapshotting the player's current XP as the event baseline.
+ * Returns the stored player document (without _id), plus `event` when joined.
  */
 import { getPlayers } from './_db.js';
 import { handlePreflight, readJsonBody } from './_cors.js';
+import { upsertEventScore } from './_events.js';
 
 export default async function handler(req, res) {
   if (handlePreflight(req, res)) return;
@@ -15,7 +18,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { userId, name, company, pack } = readJsonBody(req);
+  const { userId, name, company, pack, eventId } = readJsonBody(req);
 
   if (!userId || typeof userId !== 'string') {
     return res.status(400).json({ error: 'userId is required' });
@@ -45,7 +48,15 @@ export default async function handler(req, res) {
       { projection: { _id: 0 } }
     );
 
-    return res.status(200).json({ ok: true, player });
+    const joined = eventId
+      ? await upsertEventScore({
+        eventId, userId,
+        xp: player?.xp || 0, leaves: player?.leaves || 0, streak: player?.streak || 0,
+        name: player?.name, company: player?.company
+      })
+      : null;
+
+    return res.status(200).json({ ok: true, player, event: joined });
   } catch (err) {
     console.error('[mongolingo] register error:', err);
     return res.status(500).json({ error: 'Internal error' });
