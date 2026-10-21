@@ -1,4 +1,4 @@
-/* MongoLingo — screens: Home (world map), Level, Leaderboard. */
+/* DBLingo — screens: Home (world map), Level, Leaderboard. */
 
 const { useState: u_s, useEffect: u_e, useRef: u_r, useMemo: u_m, useCallback: u_c } = React;
 
@@ -45,7 +45,7 @@ function LandingScreen({ profile, packs, onStart, event }) {
   return (
     <div className="ml-landing">
       <section className="ml-landing__hero">
-        <div className="ml-landing__eyebrow">{event ? 'Event invite' : 'MongoLingo assignment'}</div>
+        <div className="ml-landing__eyebrow">{event ? 'Event invite' : 'DBLingo assignment'}</div>
         <h1>Choose the learning path that fits the conversation.</h1>
         <p>
           Start with MongoDB foundations, tailor the exercise path to an industry,
@@ -175,7 +175,7 @@ function PathCard({ selected, title, badge, description, children, onClick }) {
  * Home / world map
  * ============================================================ */
 function HomeScreen({ progress, setView, totalXp, debugUnlockAll = false, industryId, setIndustryId, profile, onChangeAssignment, onShowSkillBadges, onLeaveEvent }) {
-  const industries = window.MONGOLINGO_INDUSTRIES || {};
+  const industries = window.DBLINGO_INDUSTRIES || {};
   const currentPack = industries[industryId] || industries.general || {};
   return (
     <div className="ml-home">
@@ -549,7 +549,7 @@ function LevelScreen({ worldId, levelId, setView, onComplete, onMistake, progres
                 display: 'inline-block', width: 6, height: 6, borderRadius: 50,
                 background: 'var(--lg-spring)', boxShadow: '0 0 6px var(--lg-spring)'
               }}/>
-              Connected to MongoLingo sandbox · cluster atlas-free-tier
+              Connected to DBLingo sandbox · cluster atlas-free-tier
             </div>
           </div>
         </div>
@@ -831,7 +831,7 @@ async function copyText(text) {
 
 /* The one shareable URL for an event, with copy / native-share buttons. */
 function InviteLinkField({ eventId, eventName }) {
-  const link = window.MongoLingoAPI ? window.MongoLingoAPI.getInviteLink(eventId) : '';
+  const link = window.DBLingoAPI ? window.DBLingoAPI.getInviteLink(eventId) : '';
   const [copied, setCopied] = u_s(false);
   const inputRef = u_r(null);
   const canShare = typeof navigator !== 'undefined' && !!navigator.share;
@@ -861,7 +861,7 @@ function InviteLinkField({ eventId, eventName }) {
       {canShare && (
         <button
           className="ml-btn ml-btn--ghost"
-          onClick={() => navigator.share({ title: `MongoLingo · ${eventName || 'Event'}`, text: `Join me on the ${eventName || 'MongoLingo'} leaderboard!`, url: link }).catch(() => {})}
+          onClick={() => navigator.share({ title: `DBLingo · ${eventName || 'Event'}`, text: `Join me on the ${eventName || 'DBLingo'} leaderboard!`, url: link }).catch(() => {})}
         >Share…</button>
       )}
     </div>
@@ -877,7 +877,7 @@ function LeaderboardScreen({ totalXp, leaves, name = 'Ada L.', pack, eventId, ev
   // Live board from the backend (when configured); falls back to the stub
   // ONLY when no backend is configured. When the API is enabled we show a
   // loading state, then real data (or an empty/error state) — never the stub.
-  const apiEnabled = !!(window.MongoLingoAPI && window.MongoLingoAPI.apiEnabled());
+  const apiEnabled = !!(window.DBLingoAPI && window.DBLingoAPI.apiEnabled());
   const hasEvent = apiEnabled && !!eventId;
   const [scope, setScope] = u_s(hasEvent ? 'event' : 'global'); // event | global
   const showingEvent = hasEvent && scope === 'event';
@@ -892,12 +892,12 @@ function LeaderboardScreen({ totalXp, leaves, name = 'Ada L.', pack, eventId, ev
     setStatus('loading');
     // Small delay lets the debounced score sync land before we read.
     const t = setTimeout(() => {
-      window.MongoLingoAPI
+      window.DBLingoAPI
         .fetchLeaderboard(showingEvent ? { eventId, limit: 10 } : { pack, limit: 5 })
         .then((leaders) => {
           if (cancelled) return;
           if (!leaders) { setStatus('error'); return; }
-          const myId = window.MongoLingoAPI.getUserId();
+          const myId = window.DBLingoAPI.getUserId();
           setLiveBoard(leaders.map((row) => ({
             name: row.name || 'Anonymous',
             xp: row.xp || 0,
@@ -929,8 +929,8 @@ function LeaderboardScreen({ totalXp, leaves, name = 'Ada L.', pack, eventId, ev
       <p>{showingEvent
         ? 'Event standings — ranked by XP earned since each player joined.'
         : live
-          ? 'Top MongoLingo learners — live from the leaderboard service.'
-          : 'Top five MongoLingo learners this week. Resets every Monday.'}</p>
+          ? 'Top DBLingo learners — live from the leaderboard service.'
+          : 'Top five DBLingo learners this week. Resets every Monday.'}</p>
       <div className="ml-lb-list">
         {status === 'loading' && (
           <div className="ml-lb-row ml-lb-row--status"><div className="ml-lb-name">Loading leaderboard…</div></div>
@@ -984,7 +984,7 @@ const ADMIN_KEY_STORAGE = 'mongolingo.adminKey';
 const EMPTY_EVENT_FORM = { name: '', eventId: '', pack: '', startsAt: '', endsAt: '' };
 
 function AdminEventsScreen({ packs }) {
-  const api = window.MongoLingoAPI;
+  const api = window.DBLingoAPI;
   const [adminKey, setAdminKey] = u_s(() => {
     try { return sessionStorage.getItem(ADMIN_KEY_STORAGE) || ''; } catch (e) { return ''; }
   });
@@ -1031,7 +1031,7 @@ function AdminEventsScreen({ packs }) {
     return (
       <div className="ml-leaderboard">
         <h2>Event admin</h2>
-        <p>The backend isn't configured (window.MONGOLINGO_API_BASE), so events can't be created.</p>
+        <p>The backend isn't configured (window.DBLINGO_API_BASE), so events can't be created.</p>
       </div>
     );
   }

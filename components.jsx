@@ -1,4 +1,4 @@
-/* MongoLingo — small UI components shared across screens. */
+/* DBLingo — small UI components shared across screens. */
 
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
@@ -45,7 +45,7 @@ function Brand() {
   return (
     <div className="ml-topbar__brand">
       <LeafIcon size={22} color="#00ED64" />
-      <span>MongoLingo</span>
+      <span>DBLingo</span>
       <span className="tag">beta</span>
     </div>
   );
@@ -65,7 +65,7 @@ function initialsFromName(name) {
 function HUD({ xp, streak, leaves, profile, onProfileClick }) {
   const avatarLabel = profile?.learnerName ? initialsFromName(profile.learnerName) : 'ML';
   const profileTitle = profile?.learnerName
-    ? `${profile.learnerName} · ${profile.company || 'MongoLingo learner'}`
+    ? `${profile.learnerName} · ${profile.company || 'DBLingo learner'}`
     : 'Set learner profile';
   return (
     <div className="ml-topbar__hud">
@@ -284,7 +284,7 @@ function Celebrate({ visible, xp, leaves, onClose, perfect, final }) {
             <LeafIcon size={final ? 96 : 72} color="#00ED64" />
           </div>
           <h2 className="ml-celebrate__title">
-            {final ? 'You finished MongoLingo.' :
+            {final ? 'You finished DBLingo.' :
              perfect ? 'Perfect run!' : 'Level cleared'}
           </h2>
           <p className="ml-celebrate__sub">

@@ -1,6 +1,6 @@
-/* MongoLingo — Telecommunications industry content pack.
+/* DBLingo — Telecommunications industry content pack.
  * Every level has proprietary exercise content specific to telecom workflows. */
-registerMongoLingoIndustry(createMongoLingoIndustryPack({
+registerDBLingoIndustry(createDBLingoIndustryPack({
   id: 'telecom',
   name: 'Telecommunications',
   shortName: 'Telecom',

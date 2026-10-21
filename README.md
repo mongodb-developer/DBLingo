@@ -1,6 +1,6 @@
-# MongoLingo
+# DBLingo
 
-MongoLingo is an interactive, Duolingo-style game for learning MongoDB by doing. Players select a learning path, complete short hands-on lessons, and practice MongoDB concepts through domain-specific or value-proposition levels, stages, and challenges.
+DBLingo is an interactive, Duolingo-style game for learning MongoDB by doing. Players select a learning path, complete short hands-on lessons, and practice MongoDB concepts through domain-specific or value-proposition levels, stages, and challenges.
 
 ## What is included
 
@@ -11,7 +11,7 @@ MongoLingo is an interactive, Duolingo-style game for learning MongoDB by doing.
 
 ## Learning paths
 
-MongoLingo includes content packs for:
+DBLingo includes content packs for:
 
 - General MongoDB learning
 - MongoDB vs Postgres value proposition

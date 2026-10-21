@@ -1,8 +1,8 @@
 {
-  "name": "mongolingo-server",
+  "name": "dblingo-server",
   "version": "1.0.0",
   "private": true,
-  "description": "MongoLingo Vercel backend — user registration and leaderboard orchestration on MongoDB Atlas.",
+  "description": "DBLingo Vercel backend — user registration and leaderboard orchestration on MongoDB Atlas.",
   "type": "module",
   "scripts": {
     "start": "vercel dev",

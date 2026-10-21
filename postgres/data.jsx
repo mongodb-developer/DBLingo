@@ -1,6 +1,6 @@
-/* MongoLingo — MongoDB vs Postgres value proposition path.
+/* DBLingo — MongoDB vs Postgres value proposition path.
  * This pack sits side by side with the current General and industry paths. */
-registerMongoLingoIndustry(createMongoLingoIndustryPack({
+registerDBLingoIndustry(createDBLingoIndustryPack({
   id: 'postgres',
   name: 'Postgres vs MongoDB',
   shortName: 'Postgres vs MongoDB',

@@ -1,6 +1,6 @@
-/* MongoLingo — Healthcare & Life Sciences industry content pack.
+/* DBLingo — Healthcare & Life Sciences industry content pack.
  * Every level has proprietary exercise content specific to healthcare workflows. */
-registerMongoLingoIndustry(createMongoLingoIndustryPack({
+registerDBLingoIndustry(createDBLingoIndustryPack({
   id: 'healthcare',
   name: 'Healthcare & Life Sciences',
   shortName: 'Healthcare',

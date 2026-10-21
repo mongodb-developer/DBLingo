@@ -1,4 +1,4 @@
-/* MongoLingo — exercise components.
+/* DBLingo — exercise components.
  * Each one calls onResult({ correct: bool, perfect: bool, diff?: string[] }) when checked.
  * They expose: { ready: bool } via onState({ ready }) so the parent enables/disables CHECK.
  */

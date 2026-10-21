@@ -1,4 +1,4 @@
-/* MongoLingo — frontend API client for the optional Vercel backend.
+/* DBLingo — frontend API client for the optional Vercel backend.
  *
  * The app is a static site (GitHub Pages). This module talks to the
  * separate Vercel backend ONLY when API_BASE is set. If it's empty or any
@@ -9,7 +9,7 @@
  *   const API_BASE = 'https://mongolingo-api.vercel.app/api';
  * For local testing against `vercel dev`, use 'http://localhost:3000/api'.
  */
-const API_BASE = (window.MONGOLINGO_API_BASE || '').replace(/\/$/, '');
+const API_BASE = (window.DBLINGO_API_BASE || '').replace(/\/$/, '');
 
 const USER_ID_KEY = 'mongolingo.userId.v1';
 
@@ -85,7 +85,7 @@ async function fetchEvent(eventId) {
 
 /** Admin calls surface errors (unlike player calls) so the form can show them. */
 async function adminFetch(path, adminKey, options) {
-  if (!API_BASE) return { error: 'Backend is not configured (MONGOLINGO_API_BASE).' };
+  if (!API_BASE) return { error: 'Backend is not configured (DBLINGO_API_BASE).' };
   try {
     const res = await fetch(API_BASE + path, {
       ...options,
@@ -119,7 +119,7 @@ function getInviteLink(eventId) {
   return url.toString();
 }
 
-window.MongoLingoAPI = {
+window.DBLingoAPI = {
   apiEnabled,
   getUserId,
   registerUser,

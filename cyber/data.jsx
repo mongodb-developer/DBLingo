@@ -1,6 +1,6 @@
-/* MongoLingo — Cybersecurity industry content pack.
+/* DBLingo — Cybersecurity industry content pack.
  * Every level has proprietary exercise content specific to security workflows. */
-registerMongoLingoIndustry(createMongoLingoIndustryPack({
+registerDBLingoIndustry(createDBLingoIndustryPack({
   id: 'cyber',
   name: 'Cybersecurity',
   shortName: 'Cyber',

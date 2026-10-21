@@ -1,6 +1,6 @@
-/* MongoLingo — Retail & E-commerce industry content pack.
+/* DBLingo — Retail & E-commerce industry content pack.
  * Every level has proprietary exercise content specific to retail workflows. */
-registerMongoLingoIndustry(createMongoLingoIndustryPack({
+registerDBLingoIndustry(createDBLingoIndustryPack({
   id: 'retail',
   name: 'Retail & E-commerce',
   shortName: 'Retail',

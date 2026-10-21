@@ -1,9 +1,9 @@
-# MongoLingo Server
+# DBLingo Server
 
 A tiny [Vercel](https://vercel.com) serverless backend that registers learners and
-orchestrates the MongoLingo leaderboard, backed by **MongoDB Atlas**.
+orchestrates the DBLingo leaderboard, backed by **MongoDB Atlas**.
 
-The MongoLingo frontend is a static site hosted on GitHub Pages. This backend is a
+The DBLingo frontend is a static site hosted on GitHub Pages. This backend is a
 **separate origin**, so all endpoints emit CORS headers and answer preflight requests.
 The frontend calls it only if you point it at this server's URL — otherwise the app
 works exactly as before with its built-in stub leaderboard.
@@ -29,7 +29,7 @@ event creation is disabled (503).
 Each event has **exactly one invite URL**, keyed by its unique `eventId` slug:
 
 ```
-https://mongodb-developer.github.io/MongoLingo/?event=<eventId>
+https://mongodb-developer.github.io/DBLingo/?event=<eventId>
 ```
 
 - **Create** an event from the in-app admin page (`<app url>?admin`, enter the
@@ -114,7 +114,7 @@ vercel --prod     # production
 Set environment variables in the Vercel dashboard (Project → Settings → Environment Variables):
 
 - `MONGODB_URI` — your Atlas SRV connection string
-- `MONGODB_DB` — `mongolingo` (optional)
+- `MONGODB_DB` — `dblingo` (optional)
 - `ALLOWED_ORIGIN` — `https://mongodb-developer.github.io` (lock CORS in production)
 - `ADMIN_KEY` — long random secret that allows creating events (e.g. `openssl rand -hex 24`)
 
@@ -125,10 +125,10 @@ dashboard, `ALLOWED_ORIGIN` locked to `https://mongodb-developer.github.io`).
 
 ## Wiring the frontend
 
-The frontend points at this server via `window.MONGOLINGO_API_BASE` in `index.html`:
+The frontend points at this server via `window.DBLINGO_API_BASE` in `index.html`:
 
 ```html
-<script>window.MONGOLINGO_API_BASE = 'https://mongolingo-backend.vercel.app/api';</script>
+<script>window.DBLINGO_API_BASE = 'https://mongolingo-backend.vercel.app/api';</script>
 ```
 
 The leaderboard screen falls back to its stub data if the API is unset or unreachable,

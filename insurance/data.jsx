@@ -1,6 +1,6 @@
-/* MongoLingo — Insurance industry content pack.
+/* DBLingo — Insurance industry content pack.
  * Every level has proprietary exercise content specific to insurance workflows. */
-registerMongoLingoIndustry(createMongoLingoIndustryPack({
+registerDBLingoIndustry(createDBLingoIndustryPack({
   id: 'insurance',
   name: 'Insurance',
   shortName: 'Insurance',

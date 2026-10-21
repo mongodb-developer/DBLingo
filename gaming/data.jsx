@@ -1,6 +1,6 @@
-/* MongoLingo — Gaming & LiveOps industry content pack.
+/* DBLingo — Gaming & LiveOps industry content pack.
  * Every level has proprietary exercise content specific to gaming workflows. */
-registerMongoLingoIndustry(createMongoLingoIndustryPack({
+registerDBLingoIndustry(createDBLingoIndustryPack({
   id: 'gaming',
   name: 'Gaming & LiveOps',
   shortName: 'Gaming',

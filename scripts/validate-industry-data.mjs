@@ -393,7 +393,7 @@ function sampleGenericDocsForPrompt(text, collection) {
 
 function buildPrompt(filePath, source) {
   const summaries = extractLevelSummaries(source);
-  return `You are validating MongoLingo industry exercise data for domain realism and internal consistency.
+  return `You are validating DBLingo industry exercise data for domain realism and internal consistency.
 
 Review this ${filePath} module. Focus on whether every exercise's title, prompt, subtext, collection names, snippets, token-bank answers, index examples, and explanations make sense for that industry.
 

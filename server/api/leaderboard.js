@@ -113,7 +113,7 @@ export default async function handler(req, res) {
     if (req.method === 'POST') return await handlePost(req, res);
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
-    console.error('[mongolingo] leaderboard error:', err);
+    console.error('[dblingo] leaderboard error:', err);
     return res.status(500).json({ error: 'Internal error' });
   }
 }

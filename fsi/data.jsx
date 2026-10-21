@@ -1,6 +1,6 @@
-/* MongoLingo — Financial Services industry content pack.
+/* DBLingo — Financial Services industry content pack.
  * Every level has proprietary exercise content specific to FSI workflows. */
-registerMongoLingoIndustry(createMongoLingoIndustryPack({
+registerDBLingoIndustry(createDBLingoIndustryPack({
   id: 'fsi',
   name: 'Financial Services',
   shortName: 'FSI',

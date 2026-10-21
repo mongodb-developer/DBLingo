@@ -1,4 +1,4 @@
-/* MongoLingo — root App. State, persistence, view routing. */
+/* DBLingo — root App. State, persistence, view routing. */
 
 const { useState: useState_, useEffect: useEffect_, useMemo: useMemo_ } = React;
 
@@ -236,7 +236,7 @@ function App() {
 
   // When industry changes, swap active WORLDS/HINTS synchronously (useMemo runs during render)
   useMemo_(() => {
-    const pack = window.MONGOLINGO_INDUSTRIES[industryId];
+    const pack = window.DBLINGO_INDUSTRIES[industryId];
     if (pack) {
       window.WORLDS = pack.worlds;
       window.HINTS = pack.hints || window.HINTS;
@@ -316,8 +316,8 @@ function App() {
     setView({ name: 'home' });
     if (joining) { setPendingEvent(null); clearEventParam(); }
     // Register the learner with the optional backend (no-op if API_BASE unset).
-    if (window.MongoLingoAPI) {
-      window.MongoLingoAPI.registerUser({
+    if (window.DBLingoAPI) {
+      window.DBLingoAPI.registerUser({
         name: completeProfile.learnerName,
         company: completeProfile.company,
         pack: completeProfile.selectedPackId || 'general',
@@ -330,9 +330,9 @@ function App() {
   useEffect_(() => {
     const inviteId = URL_PARAMS.eventId;
     if (!inviteId || URL_PARAMS.admin) return;
-    if (!window.MongoLingoAPI || !window.MongoLingoAPI.apiEnabled()) { clearEventParam(); return; }
+    if (!window.DBLingoAPI || !window.DBLingoAPI.apiEnabled()) { clearEventParam(); return; }
     let cancelled = false;
-    window.MongoLingoAPI.fetchEvent(inviteId).then((event) => {
+    window.DBLingoAPI.fetchEvent(inviteId).then((event) => {
       if (cancelled) return;
       const current = loadProfile();
       if (!event) {
@@ -370,7 +370,7 @@ function App() {
       // Switching assignment discards progress, same as "Change path".
       try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
       setState(defaultProgress());
-      const pack = (window.MONGOLINGO_INDUSTRIES || {})[event.pack];
+      const pack = (window.DBLINGO_INDUSTRIES || {})[event.pack];
       const comparisonIds = typeof COMPARISON_PACK_IDS !== 'undefined' ? COMPARISON_PACK_IDS : ['postgres'];
       nextProfile = {
         ...nextProfile,
@@ -383,8 +383,8 @@ function App() {
     setInviteDialog(null);
     clearEventParam();
     setView({ name: 'leaderboard' });
-    if (window.MongoLingoAPI) {
-      window.MongoLingoAPI.registerUser({
+    if (window.DBLingoAPI) {
+      window.DBLingoAPI.registerUser({
         name: nextProfile.learnerName,
         company: nextProfile.company,
         pack: nextProfile.selectedPackId || 'general',
@@ -406,10 +406,10 @@ function App() {
 
   // Debounced score sync to the optional backend whenever progress changes.
   useEffect_(() => {
-    if (!window.MongoLingoAPI || !window.MongoLingoAPI.apiEnabled()) return;
+    if (!window.DBLingoAPI || !window.DBLingoAPI.apiEnabled()) return;
     if (!profile.onboardingComplete) return;
     const t = setTimeout(() => {
-      window.MongoLingoAPI.submitScore({
+      window.DBLingoAPI.submitScore({
         xp: state.xp,
         leaves: state.leaves,
         streak: state.streak || 0,
@@ -433,7 +433,7 @@ function App() {
     setView({ name: 'landing' });
   }
 
-  const landing = <LandingScreen profile={profile} packs={window.MONGOLINGO_INDUSTRIES || {}} onStart={startAssignment} event={pendingEvent} />;
+  const landing = <LandingScreen profile={profile} packs={window.DBLINGO_INDUSTRIES || {}} onStart={startAssignment} event={pendingEvent} />;
   const home = <HomeScreen progress={state.progress} setView={setView} totalXp={state.xp} debugUnlockAll={debugUnlockAll} industryId={industryId} setIndustryId={setIndustryId} profile={profile} onChangeAssignment={changeAssignment} onShowSkillBadges={showSkillBadges} onLeaveEvent={leaveEvent} />;
 
   let screen;
@@ -474,7 +474,7 @@ function App() {
                  eventId={profile.eventId} eventName={profile.eventName} />;
       break;
     case 'admin':
-      screen = <AdminEventsScreen packs={window.MONGOLINGO_INDUSTRIES || {}} />;
+      screen = <AdminEventsScreen packs={window.DBLINGO_INDUSTRIES || {}} />;
       break;
     default:
       screen = profile.onboardingComplete ? home : landing;
@@ -508,7 +508,7 @@ function App() {
       <EventInviteModal
         dialog={inviteDialog}
         profile={profile}
-        packs={window.MONGOLINGO_INDUSTRIES || {}}
+        packs={window.DBLINGO_INDUSTRIES || {}}
         onJoin={joinEvent}
         onClose={dismissInvite}
       />

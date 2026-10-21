@@ -58,7 +58,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true, player, event: joined });
   } catch (err) {
-    console.error('[mongolingo] register error:', err);
+    console.error('[dblingo] register error:', err);
     return res.status(500).json({ error: 'Internal error' });
   }
 }

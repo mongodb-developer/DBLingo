@@ -1,4 +1,4 @@
-"""Local dev server for MongoLingo that disables browser caching.
+"""Local dev server for DBLingo that disables browser caching.
 
 `python3 -m http.server` sends no Cache-Control header, so browsers
 heuristically cache the in-browser-compiled .jsx files and can mix fresh and
@@ -21,5 +21,5 @@ if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     handler = lambda *a, **kw: NoCacheHandler(*a, directory=root, **kw)
-    print(f"MongoLingo dev server (no-cache) on http://localhost:{port}")
+    print(f"DBLingo dev server (no-cache) on http://localhost:{port}")
     http.server.ThreadingHTTPServer(("", port), handler).serve_forever()

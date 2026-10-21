@@ -1,6 +1,6 @@
-/* MongoLingo — Manufacturing & IoT industry content pack.
+/* DBLingo — Manufacturing & IoT industry content pack.
  * Every level has proprietary exercise content specific to manufacturing workflows. */
-registerMongoLingoIndustry(createMongoLingoIndustryPack({
+registerDBLingoIndustry(createDBLingoIndustryPack({
   id: 'manufacture',
   name: 'Manufacturing & IoT',
   shortName: 'Manufacturing',

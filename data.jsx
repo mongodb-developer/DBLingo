@@ -1,4 +1,4 @@
-/* MongoLingo — content data
+/* DBLingo — content data
  * Six worlds × multiple levels. Each level declares its `kind`:
  *   - "shape"   → drag fields into a JSON document shape
  *   - "blocks"  → drag operator/value tokens into snippet slots
@@ -754,10 +754,10 @@ const WORLDS = [
 /* ============================================================
  * Industry pack registry & helpers
  * ============================================================ */
-window.MONGOLINGO_INDUSTRIES = {};
+window.DBLINGO_INDUSTRIES = {};
 
-function registerMongoLingoIndustry(pack) {
-  window.MONGOLINGO_INDUSTRIES[pack.id] = pack;
+function registerDBLingoIndustry(pack) {
+  window.DBLINGO_INDUSTRIES[pack.id] = pack;
   return pack;
 }
 
@@ -933,7 +933,7 @@ function createIndustryWorlds(profile) {
   return worlds;
 }
 
-function createMongoLingoIndustryPack(profile) {
+function createDBLingoIndustryPack(profile) {
   return {
     id: profile.id,
     name: profile.name,
@@ -946,7 +946,7 @@ function createMongoLingoIndustryPack(profile) {
 }
 
 /* Register the general/default pack */
-registerMongoLingoIndustry({
+registerDBLingoIndustry({
   id: 'general',
   name: 'General MongoDB Foundations',
   shortName: 'General',

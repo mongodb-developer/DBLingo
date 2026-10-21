@@ -13,11 +13,11 @@ const dbName = process.env.MONGODB_DB || 'mongolingo';
 
 if (!uri) {
   // Surface a clear error at import time rather than a cryptic driver error.
-  console.warn('[mongolingo] MONGODB_URI is not set. Set it in your environment / Vercel project.');
+  console.warn('[dblingo] MONGODB_URI is not set. Set it in your environment / Vercel project.');
 }
 
 /** @type {Promise<MongoClient> | undefined} */
-let clientPromise = globalThis.__mongolingoClientPromise;
+let clientPromise = globalThis.__dblingoClientPromise;
 
 function createClientPromise() {
   const client = new MongoClient(uri, {
@@ -31,14 +31,14 @@ export async function getDb() {
   if (!uri) throw new Error('MONGODB_URI is not configured');
   if (!clientPromise) {
     clientPromise = createClientPromise();
-    globalThis.__mongolingoClientPromise = clientPromise;
+    globalThis.__dblingoClientPromise = clientPromise;
   }
   const client = await clientPromise;
   return client.db(dbName);
 }
 
 /** Per-collection "indexes ensured" flags, shared across hot reloads. */
-const ensured = globalThis.__mongolingoIndexesEnsuredMap || (globalThis.__mongolingoIndexesEnsuredMap = {});
+const ensured = globalThis.__dblingoIndexesEnsuredMap || (globalThis.__dblingoIndexesEnsuredMap = {});
 
 /**
  * Return a collection, ensuring its indexes once per warm lambda.
@@ -52,7 +52,7 @@ async function getCollection(name, ensureIndexes) {
       await ensureIndexes(collection);
       ensured[name] = true;
     } catch (e) {
-      console.warn(`[mongolingo] index ensure failed for ${name}:`, e?.message);
+      console.warn(`[dblingo] index ensure failed for ${name}:`, e?.message);
     }
   }
   return collection;

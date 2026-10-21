@@ -1,6 +1,6 @@
-/* MongoLingo — Media & Entertainment industry content pack.
+/* DBLingo — Media & Entertainment industry content pack.
  * Every level has proprietary exercise content specific to media workflows. */
-registerMongoLingoIndustry(createMongoLingoIndustryPack({
+registerDBLingoIndustry(createDBLingoIndustryPack({
   id: 'media',
   name: 'Media & Entertainment',
   shortName: 'Media',
