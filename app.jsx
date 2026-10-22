@@ -303,7 +303,9 @@ function App() {
   // for temporarily opening every level during testing.
   const debugUnlockAll = unlockAll;
 
-  function startAssignment(nextProfile) {
+  /** Complete onboarding. nextView lets callers (e.g. the leaderboard gate)
+   *  land somewhere other than the map afterwards. */
+  function startAssignment(nextProfile, nextView = 'home') {
     const joining = pendingEvent;
     const completeProfile = {
       ...profile, // keep existing event membership across "Change path"
@@ -313,7 +315,7 @@ function App() {
     };
     setProfile(completeProfile);
     setIndustryId(completeProfile.selectedPackId || 'general');
-    setView({ name: 'home' });
+    setView({ name: nextView });
     if (joining) { setPendingEvent(null); clearEventParam(); }
     // Register the learner with the optional backend (no-op if API_BASE unset).
     if (window.DBLingoAPI) {
@@ -433,7 +435,7 @@ function App() {
     setView({ name: 'landing' });
   }
 
-  const landing = <LandingScreen profile={profile} packs={window.DBLINGO_INDUSTRIES || {}} onStart={startAssignment} event={pendingEvent} />;
+  const landing = <LandingScreen profile={profile} packs={window.DBLINGO_INDUSTRIES || {}} onStart={(p) => startAssignment(p)} event={pendingEvent} />;
   const home = <HomeScreen progress={state.progress} setView={setView} totalXp={state.xp} debugUnlockAll={debugUnlockAll} industryId={industryId} setIndustryId={setIndustryId} profile={profile} onChangeAssignment={changeAssignment} onShowSkillBadges={showSkillBadges} onLeaveEvent={leaveEvent} />;
 
   let screen;
@@ -468,10 +470,19 @@ function App() {
                  }} />;
       break;
     case 'leaderboard':
-      screen = <LeaderboardScreen
-                 totalXp={state.xp} leaves={state.leaves}
-                 name={profile.learnerName || 'You'} pack={industryId}
-                 eventId={profile.eventId} eventName={profile.eventName} />;
+      // Never show standings (live or demo) to learners who haven't
+      // identified themselves — prompt for name / company instead.
+      screen = profile.onboardingComplete
+        ? <LeaderboardScreen
+            totalXp={state.xp} leaves={state.leaves}
+            name={profile.learnerName || 'You'} pack={industryId}
+            eventId={profile.eventId} eventName={profile.eventName} />
+        : <LeaderboardGate
+            profile={profile}
+            packs={window.DBLINGO_INDUSTRIES || {}}
+            event={pendingEvent}
+            onSubmit={(p) => startAssignment(p, 'leaderboard')}
+            onChoosePath={() => setView({ name: 'landing' })} />;
       break;
     case 'admin':
       screen = <AdminEventsScreen packs={window.DBLINGO_INDUSTRIES || {}} />;

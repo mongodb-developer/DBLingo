@@ -1412,6 +1412,27 @@ code, pre, .mono { font-family: var(--ml-font-mono); }
 .ml-invite h3 { margin: 0 0 6px; font-size: 17px; }
 .ml-invite p { margin: 0 0 14px; color: var(--ml-text-dim); }
 
+/* Leaderboard gate — shown until the learner enters name + company */
+.ml-lb-gate .ml-invite { margin-top: 0; }
+.ml-lb-gate__panel .ml-form-grid { text-align: left; }
+.ml-lb-gate__panel .ml-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ml-lb-gate__link {
+  display: block;
+  margin: 16px auto 0;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  color: var(--ml-text-dim);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ml-lb-gate__link:hover { color: var(--lg-spring); }
+@media (max-width: 540px) {
+  .ml-lb-gate__panel .ml-form-grid { grid-template-columns: 1fr; }
+}
+
 /* ---------- Event leaderboards ---------- */
 .ml-lb-tabs {
   display: inline-flex;

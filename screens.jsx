@@ -868,7 +868,111 @@ function InviteLinkField({ eventId, eventName }) {
   );
 }
 
-function LeaderboardScreen({ totalXp, leaves, name = 'Ada L.', pack, eventId, eventName }) {
+/* Shown instead of the leaderboard until the learner has entered their name
+ * and company. No standings (real or demo) are rendered here — the learner is
+ * prompted to identify themselves first, then lands on the live board. */
+function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath }) {
+  const [open, setOpen] = u_s(true);
+  const [draft, setDraft] = u_s({
+    learnerName: profile?.learnerName || '',
+    company: profile?.company || ''
+  });
+  const nameRef = u_r(null);
+
+  u_e(() => {
+    if (!open) return;
+    nameRef.current && nameRef.current.focus();
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const canSubmit = !!(draft.learnerName.trim() && draft.company.trim());
+
+  function submit(e) {
+    e.preventDefault();
+    if (!canSubmit) return;
+    // An event invite pins the assignment; otherwise keep the saved path.
+    const packId = (event && event.pack && packs[event.pack])
+      ? event.pack
+      : (packs[profile?.selectedPackId] ? profile.selectedPackId : 'general');
+    const pathType = packId === 'general'
+      ? 'general'
+      : (COMPARISON_PACK_IDS.includes(packId) ? 'comparison' : 'industry');
+    onSubmit({
+      learnerName: draft.learnerName.trim(),
+      company: draft.company.trim(),
+      selectedPackId: packId,
+      pathType
+    });
+  }
+
+  return (
+    <div className="ml-leaderboard ml-lb-gate">
+      <h2>Leaderboard</h2>
+      <p>Standings are visible to registered learners.</p>
+      <div className="ml-invite">
+        <Icon name="Lock" size={20} color="var(--lg-spring)" style={{ display: 'block', margin: '0 auto 10px' }} />
+        <h3>Add your name &amp; company to see the standings.</h3>
+        <p>
+          {event
+            ? <>Join <b>{event.name}</b> and see how you rank against everyone else.</>
+            : 'Your XP will be ranked alongside other DBLingo learners.'}
+        </p>
+        <button className="ml-btn ml-btn--primary" onClick={() => setOpen(true)}>
+          <Icon name="Person" size={13} color="currentColor" /> Add my details
+        </button>
+      </div>
+
+      {open && (
+        <div className="ml-skill-badges" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-labelledby="ml-lb-gate-title">
+          <form className="ml-skill-badges__panel ml-lb-gate__panel" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+            <div className="ml-skill-badges__icon" aria-hidden="true">
+              <Icon name="Person" size={24} color="var(--lg-spring)" />
+            </div>
+            <div className="ml-skill-badges__eyebrow">{event ? "YOU'RE INVITED" : 'JOIN THE LEADERBOARD'}</div>
+            <h2 id="ml-lb-gate-title">Place your name on the board</h2>
+            <p>
+              {event
+                ? <>Enter your details to compete on <b>{event.name}</b>.</>
+                : 'Enter your name and company to see the standings and start ranking.'}
+            </p>
+            <div className="ml-form-grid">
+              <label className="ml-field">
+                <span>Your name</span>
+                <input
+                  ref={nameRef}
+                  value={draft.learnerName}
+                  placeholder="Ada Lovelace"
+                  onChange={(e) => setDraft(prev => ({ ...prev, learnerName: e.target.value }))}
+                />
+              </label>
+              <label className="ml-field">
+                <span>Company</span>
+                <input
+                  value={draft.company}
+                  placeholder="Example Corp"
+                  onChange={(e) => setDraft(prev => ({ ...prev, company: e.target.value }))}
+                />
+              </label>
+            </div>
+            <div className="ml-event-actions">
+              <button type="button" className="ml-btn ml-btn--ghost" onClick={() => setOpen(false)}>Not now</button>
+              <button type="submit" className="ml-btn ml-btn--primary" disabled={!canSubmit}>See standings</button>
+            </div>
+            {onChoosePath && (
+              <button type="button" className="ml-lb-gate__link" onClick={onChoosePath}>
+                Choose a learning path instead
+              </button>
+            )}
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeaderboardScreen({ totalXp, leaves, name = 'You', pack, eventId, eventName }) {
   const me = { name: 'You (' + name + ')', xp: totalXp, leaves, me: true };
   const stubBoard = [...STUB_LEADERS, me]
     .sort((a, b) => b.xp - a.xp)
@@ -1116,4 +1220,4 @@ function AdminEventsScreen({ packs }) {
   );
 }
 
-Object.assign(window, { LandingScreen, HomeScreen, LevelScreen, ChallengeScreen, LeaderboardScreen, AdminEventsScreen, COMPARISON_PACK_IDS });
+Object.assign(window, { LandingScreen, HomeScreen, LevelScreen, ChallengeScreen, LeaderboardScreen, LeaderboardGate, AdminEventsScreen, COMPARISON_PACK_IDS });
