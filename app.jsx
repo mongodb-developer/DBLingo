@@ -9,6 +9,7 @@ function defaultProfile() {
   return {
     learnerName: '',
     company: '',
+    phone: '',
     pathType: 'general',
     selectedPackId: 'general',
     onboardingComplete: false,
@@ -322,6 +323,7 @@ function App() {
       window.DBLingoAPI.registerUser({
         name: completeProfile.learnerName,
         company: completeProfile.company,
+        phone: completeProfile.phone,
         pack: completeProfile.selectedPackId || 'general',
         eventId: completeProfile.eventId
       });
@@ -389,6 +391,7 @@ function App() {
       window.DBLingoAPI.registerUser({
         name: nextProfile.learnerName,
         company: nextProfile.company,
+        phone: nextProfile.phone,
         pack: nextProfile.selectedPackId || 'general',
         eventId: event.eventId
       });

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mongolingo",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["/Users/pavel.duchovny/Documents/Projects/Games/MongoLingo/scripts/dev-server.py", "8123"],
+      "port": 8123
+    }
+  ]
+}

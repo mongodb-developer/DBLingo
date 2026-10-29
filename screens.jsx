@@ -7,6 +7,15 @@ const { useState: u_s, useEffect: u_e, useRef: u_r, useMemo: u_m, useCallback: u
  * ============================================================ */
 const COMPARISON_PACK_IDS = ['postgres'];
 
+/* Phone numbers: digits plus common separators, optional leading "+",
+ * 7–15 digits total (E.164 max). Mirrors server/api/register.js. */
+function isValidPhone(value) {
+  const v = String(value || '').trim();
+  if (!/^\+?[0-9\s().-]+$/.test(v)) return false;
+  const digits = v.replace(/\D/g, '').length;
+  return digits >= 7 && digits <= 15;
+}
+
 function LandingScreen({ profile, packs, onStart, event }) {
   const allPacks = Object.values(packs || {});
   const generalPack = packs.general;
@@ -17,6 +26,7 @@ function LandingScreen({ profile, packs, onStart, event }) {
   const [draft, setDraft] = u_s({
     learnerName: profile?.learnerName || '',
     company: profile?.company || '',
+    phone: profile?.phone || '',
     pathType: initialPathType,
     selectedPackId: profile?.selectedPackId || 'general'
   });
@@ -39,7 +49,9 @@ function LandingScreen({ profile, packs, onStart, event }) {
     setDraft(prev => ({ ...prev, pathType, selectedPackId }));
   }
 
-  const canStart = draft.learnerName.trim() && draft.company.trim() && draft.selectedPackId;
+  const phoneValid = isValidPhone(draft.phone);
+  const showPhoneError = draft.phone.trim() !== '' && !phoneValid;
+  const canStart = draft.learnerName.trim() && draft.company.trim() && phoneValid && draft.selectedPackId;
   const selectedPack = packs[draft.selectedPackId] || generalPack;
 
   return (
@@ -68,12 +80,13 @@ function LandingScreen({ profile, packs, onStart, event }) {
       )}
 
       <section className="ml-landing__panel" data-locked={!!lockedPackId}>
-        <div className="ml-form-grid">
+        <div className="ml-form-grid ml-form-grid--3">
           <label className="ml-field">
             <span>Your name</span>
             <input
               value={draft.learnerName}
               placeholder="Ada Lovelace"
+              autoComplete="name"
               onChange={(e) => setDraft(prev => ({ ...prev, learnerName: e.target.value }))}
             />
           </label>
@@ -82,8 +95,23 @@ function LandingScreen({ profile, packs, onStart, event }) {
             <input
               value={draft.company}
               placeholder="Example Corp"
+              autoComplete="organization"
               onChange={(e) => setDraft(prev => ({ ...prev, company: e.target.value }))}
             />
+          </label>
+          <label className="ml-field" data-invalid={showPhoneError || undefined}>
+            <span>Phone</span>
+            <input
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              maxLength={24}
+              value={draft.phone}
+              placeholder="+1 555 123 4567"
+              aria-invalid={showPhoneError}
+              onChange={(e) => setDraft(prev => ({ ...prev, phone: e.target.value }))}
+            />
+            {showPhoneError && <small className="ml-field__error">Enter a valid phone number (7–15 digits).</small>}
           </label>
         </div>
 
@@ -136,7 +164,7 @@ function LandingScreen({ profile, packs, onStart, event }) {
           <button
             className="ml-btn ml-btn--primary ml-btn--lg"
             disabled={!canStart}
-            onClick={() => onStart({ ...draft, learnerName: draft.learnerName.trim(), company: draft.company.trim() })}
+            onClick={() => onStart({ ...draft, learnerName: draft.learnerName.trim(), company: draft.company.trim(), phone: draft.phone.trim() })}
           >
             {event ? 'Join event' : 'Start Assignment'} <Icon name="ChevronRight" size={13} color="currentColor" />
           </button>
@@ -916,7 +944,8 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
   const [open, setOpen] = u_s(true);
   const [draft, setDraft] = u_s({
     learnerName: profile?.learnerName || '',
-    company: profile?.company || ''
+    company: profile?.company || '',
+    phone: profile?.phone || ''
   });
   const nameRef = u_r(null);
 
@@ -928,7 +957,9 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  const canSubmit = !!(draft.learnerName.trim() && draft.company.trim());
+  const phoneValid = isValidPhone(draft.phone);
+  const showPhoneError = draft.phone.trim() !== '' && !phoneValid;
+  const canSubmit = !!(draft.learnerName.trim() && draft.company.trim() && phoneValid);
 
   function submit(e) {
     e.preventDefault();
@@ -943,6 +974,7 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
     onSubmit({
       learnerName: draft.learnerName.trim(),
       company: draft.company.trim(),
+      phone: draft.phone.trim(),
       selectedPackId: packId,
       pathType
     });
@@ -954,7 +986,7 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
       <p>Standings are visible to registered learners.</p>
       <div className="ml-invite">
         <Icon name="Lock" size={20} color="var(--lg-spring)" style={{ display: 'block', margin: '0 auto 10px' }} />
-        <h3>Add your name &amp; company to see the standings.</h3>
+        <h3>Add your name, company &amp; phone to see the standings.</h3>
         <p>
           {event
             ? <>Join <b>{event.name}</b> and see how you rank against everyone else.</>
@@ -976,7 +1008,7 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
             <p>
               {event
                 ? <>Enter your details to compete on <b>{event.name}</b>.</>
-                : 'Enter your name and company to see the standings and start ranking.'}
+                : 'Enter your name, company and phone to see the standings and start ranking.'}
             </p>
             <div className="ml-form-grid">
               <label className="ml-field">
@@ -985,6 +1017,7 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
                   ref={nameRef}
                   value={draft.learnerName}
                   placeholder="Ada Lovelace"
+                  autoComplete="name"
                   onChange={(e) => setDraft(prev => ({ ...prev, learnerName: e.target.value }))}
                 />
               </label>
@@ -993,8 +1026,23 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
                 <input
                   value={draft.company}
                   placeholder="Example Corp"
+                  autoComplete="organization"
                   onChange={(e) => setDraft(prev => ({ ...prev, company: e.target.value }))}
                 />
+              </label>
+              <label className="ml-field" data-invalid={showPhoneError || undefined}>
+                <span>Phone</span>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  maxLength={24}
+                  value={draft.phone}
+                  placeholder="+1 555 123 4567"
+                  aria-invalid={showPhoneError}
+                  onChange={(e) => setDraft(prev => ({ ...prev, phone: e.target.value }))}
+                />
+                {showPhoneError && <small className="ml-field__error">Enter a valid phone number (7–15 digits).</small>}
               </label>
             </div>
             <div className="ml-event-actions">
@@ -1128,6 +1176,124 @@ function LeaderboardScreen({ totalXp, leaves, name = 'You', pack, eventId, event
 const ADMIN_KEY_STORAGE = 'mongolingo.adminKey';
 const EMPTY_EVENT_FORM = { name: '', eventId: '', pack: '', startsAt: '', endsAt: '' };
 
+/* Admin-only: an event's top players with contact details (phone) so
+ * organisers can reach the winners. Phone numbers are fetched from an
+ * admin-key-protected endpoint and are never shown on the public leaderboard. */
+const ADMIN_LEADER_LIMITS = [10, 25, 50, 100];
+
+function csvCell(value) {
+  const s = value == null ? '' : String(value);
+  // Quote everything; neutralise spreadsheet formula injection (=, +, -, @).
+  const safe = /^[=+\-@\t\r]/.test(s) && !/^\+?[0-9\s().-]+$/.test(s) ? "'" + s : s;
+  return '"' + safe.replace(/"/g, '""') + '"';
+}
+
+function downloadLeadersCsv(event, leaders) {
+  const header = ['Rank', 'Name', 'Company', 'Phone', 'Event XP', 'Leaves', 'Joined'];
+  const rows = leaders.map(p => [
+    p.rank, p.name, p.company, p.phone, p.xp, p.leaves,
+    p.joinedAt ? new Date(p.joinedAt).toISOString() : ''
+  ]);
+  const csv = [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${event.eventId}-top-players.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function AdminEventLeaders({ adminKey, event }) {
+  const api = window.DBLingoAPI;
+  const [open, setOpen] = u_s(false);
+  const [limit, setLimit] = u_s(10);
+  const [leaders, setLeaders] = u_s(null);
+  const [loading, setLoading] = u_s(false);
+  const [error, setError] = u_s('');
+
+  async function load(nextLimit = limit) {
+    setLoading(true); setError('');
+    const res = await api.fetchEventLeadersAdmin(adminKey, event.eventId, nextLimit);
+    setLoading(false);
+    if (!res || res.error) { setError(res?.error || 'Could not load players'); return; }
+    setLeaders(res.leaders || []);
+  }
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && !leaders) load();
+  }
+
+  function changeLimit(e) {
+    const n = Number(e.target.value);
+    setLimit(n);
+    load(n);
+  }
+
+  return (
+    <div className="ml-admin__leaders">
+      <div className="ml-admin__leaders-bar">
+        <button type="button" className="ml-btn ml-btn--ghost" onClick={toggle} aria-expanded={open}>
+          <Icon name="Person" size={13} color="currentColor" /> {open ? 'Hide top players' : 'Show top players & contacts'}
+        </button>
+        {open && (
+          <>
+            <label className="ml-admin__leaders-limit">
+              <span>Top</span>
+              <select value={limit} onChange={changeLimit} disabled={loading}>
+                {ADMIN_LEADER_LIMITS.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </label>
+            <button type="button" className="ml-btn ml-btn--ghost" onClick={() => load()} disabled={loading}>
+              <Icon name="Refresh" size={13} color="currentColor" /> Refresh
+            </button>
+            <button type="button" className="ml-btn ml-btn--ghost"
+                    disabled={!leaders || leaders.length === 0}
+                    onClick={() => downloadLeadersCsv(event, leaders)}>
+              Export CSV
+            </button>
+          </>
+        )}
+      </div>
+
+      {open && (
+        <div className="ml-admin__leaders-body">
+          <p className="ml-admin__private">Private: contact details are only visible on this admin page, never on the public leaderboard.</p>
+          {error && <div className="ml-admin__error" role="alert">{error}</div>}
+          {loading && !leaders && <div className="ml-admin__muted">Loading…</div>}
+          {leaders && leaders.length === 0 && <div className="ml-admin__muted">No players have joined this event yet.</div>}
+          {leaders && leaders.length > 0 && (
+            <div className="ml-admin__table-wrap">
+              <table className="ml-admin__table">
+                <thead>
+                  <tr><th>#</th><th>Name</th><th>Company</th><th>Phone</th><th className="ml-admin__num">Event XP</th></tr>
+                </thead>
+                <tbody>
+                  {leaders.map(p => (
+                    <tr key={p.userId} data-rank={p.rank}>
+                      <td className="ml-admin__rank">{p.rank}</td>
+                      <td>{p.name || 'Anonymous'}</td>
+                      <td>{p.company || '—'}</td>
+                      <td>{p.phone
+                        ? <a href={`tel:${p.phone.replace(/[^\d+]/g, '')}`}>{p.phone}</a>
+                        : <span className="ml-admin__muted">not provided</span>}</td>
+                      <td className="ml-admin__num">{(p.xp || 0).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminEventsScreen({ packs }) {
   const api = window.DBLingoAPI;
   const [adminKey, setAdminKey] = u_s(() => {
@@ -1253,6 +1419,7 @@ function AdminEventsScreen({ packs }) {
                 <small>{ev.status}{ev.pack ? ` · ${packs[ev.pack]?.name || ev.pack}` : ''}{ev.endsAt ? ` · ends ${new Date(ev.endsAt).toLocaleString()}` : ''}</small>
               </div>
               <InviteLinkField eventId={ev.eventId} eventName={ev.name} />
+              <AdminEventLeaders adminKey={adminKey} event={ev} />
             </div>
           ))}
         </div>

@@ -53,7 +53,7 @@ async function handleGet(req, res) {
 
   const players = await getPlayers();
   const leaders = await players
-    .find(filter, { projection: { _id: 0, company: 0 } })
+    .find(filter, { projection: { _id: 0, company: 0, phone: 0 } })
     .sort({ xp: -1, updatedAt: 1 })
     .limit(limit)
     .toArray();

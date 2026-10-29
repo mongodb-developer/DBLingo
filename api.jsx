@@ -46,11 +46,11 @@ async function apiFetch(path, options) {
   }
 }
 
-async function registerUser({ name, company, pack, eventId }) {
+async function registerUser({ name, company, phone, pack, eventId }) {
   if (!apiEnabled()) return null;
   return apiFetch('/register', {
     method: 'POST',
-    body: JSON.stringify({ userId: getUserId(), name, company, pack, eventId: eventId || undefined })
+    body: JSON.stringify({ userId: getUserId(), name, company, phone: phone || undefined, pack, eventId: eventId || undefined })
   });
 }
 
@@ -110,6 +110,13 @@ function listEvents(adminKey) {
   return adminFetch('/events', adminKey, { method: 'GET' });
 }
 
+/** Admin only: an event's top players including private contact details (phone).
+ *  Never used by the public leaderboard. */
+function fetchEventLeadersAdmin(adminKey, eventId, limit = 25) {
+  const qs = new URLSearchParams({ id: eventId, leaders: '1', limit: String(limit) });
+  return adminFetch('/events?' + qs.toString(), adminKey, { method: 'GET', cache: 'no-store' });
+}
+
 /** Shareable invite link for an event, based on the current page URL. */
 function getInviteLink(eventId) {
   const url = new URL(window.location.href);
@@ -128,5 +135,6 @@ window.DBLingoAPI = {
   fetchEvent,
   createEvent,
   listEvents,
+  fetchEventLeadersAdmin,
   getInviteLink
 };
