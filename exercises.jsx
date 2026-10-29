@@ -16,57 +16,287 @@ function shuffleForDisplay(items) {
 }
 
 /* ====================================================================
- * Common: drag-and-drop helpers (HTML5 + touch-friendly via pointer events)
+ * Common: drag-and-drop engine (pointer events — mouse, touch and pen).
+ *
+ * HTML5 drag-and-drop never fires on touch screens, so every draggable
+ * exercise goes through this hook instead:
+ *   - Touch: the piece lifts (floats, grows, glows) the instant it is pressed.
+ *   - Mouse: the piece lifts after a few pixels of movement.
+ *   - Tap a piece to select it, then tap a slot to place it (no dragging).
+ *   - The page auto-scrolls when a dragged piece nears the viewport edge.
+ * Drop targets are any element carrying `targetAttrs(key)`; `onPlace(key,
+ * id, { half, via })` is called when a piece lands on one.
  * ==================================================================== */
+const DND_SLOP_PX = 4;             // mouse movement before a press counts as a drag
+const DND_TOUCH_SLOP_PX = 8;       // finger jitter tolerated before a tap becomes a drag
+const DND_SUPPRESS_CLICK_MS = 400; // ignore the click that trails a drag
+const DND_TOUCH_LIFT_PX = 32;      // must match the ml-lift-touch keyframe offset
+const DND_EDGE_PX = 56;            // auto-scroll zone near viewport edges
+const DND_MAX_SCROLL_STEP = 20;
 
-/* A token in the bank. Drag with mouse OR tap-to-select then tap a slot. */
-function DragToken({ id, kind, label, used, selected, onSelect, onDragStart }) {
+/* Creates the imperative pointer engine. It talks to React only through the
+ * stable setters/refs passed in, so window listeners never see stale state. */
+function createDragEngine({ setOver, setDragId, setSelected, onPlaceRef }) {
+  const scope = 'dnd-' + Math.random().toString(36).slice(2, 9);
+  let s = null;        // active press session
+  let overNow = null;  // { key, half } currently under the piece
+  let suppressUntil = 0;
+
+  function setOverIfChanged(next) {
+    const sameKey = (overNow && overNow.key) === (next && next.key);
+    const sameHalf = (overNow && overNow.half) === (next && next.half);
+    if (sameKey && sameHalf) return;
+    overNow = next;
+    setOver(next);
+  }
+
+  function targetAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const t = el && el.closest('[data-drop-key]');
+    if (!t || t.getAttribute('data-dnd-scope') !== scope) return null;
+    const r = t.getBoundingClientRect();
+    return { key: t.getAttribute('data-drop-key'), half: (y - r.top) < r.height / 2 ? 'top' : 'bot' };
+  }
+
+  function hitTest() {
+    if (!s) return;
+    // Centre of the floating piece as the user sees it (raised above the finger on touch).
+    const cx = s.x - s.offX + s.w / 2;
+    const cy = s.y - s.offY + s.h / 2 - (s.touch ? DND_TOUCH_LIFT_PX : 0);
+    const found = s.touch
+      ? (targetAt(cx, cy) || targetAt(s.x, s.y))
+      : (targetAt(s.x, s.y) || targetAt(cx, cy));
+    setOverIfChanged(found);
+  }
+
+  function positionGhost() {
+    if (s && s.ghost) s.ghost.style.transform = `translate3d(${s.x - s.offX}px, ${s.y - s.offY}px, 0)`;
+  }
+
+  function autoScroll() {
+    if (!s || !s.lifted) return;
+    const topEdge = (s.topbar ? s.topbar.getBoundingClientRect().bottom : 0) + DND_EDGE_PX;
+    const bottomEdge = window.innerHeight - DND_EDGE_PX;
+    let dy = 0;
+    if (s.y < topEdge) dy = -Math.min(DND_MAX_SCROLL_STEP, Math.ceil((topEdge - s.y) / 3));
+    else if (s.y > bottomEdge) dy = Math.min(DND_MAX_SCROLL_STEP, Math.ceil((s.y - bottomEdge) / 3));
+    if (dy) { window.scrollBy(0, dy); hitTest(); }
+    s.raf = requestAnimationFrame(autoScroll);
+  }
+
+  function lift() {
+    s.lifted = true;
+    const ghost = document.createElement('div');
+    ghost.className = 'ml-drag-ghost' + (s.touch ? ' ml-drag-ghost--touch' : '');
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.style.width = s.w + 'px';
+    ghost.style.height = s.h + 'px';
+    ghost.style.setProperty('--ml-lift', DND_TOUCH_LIFT_PX + 'px');
+    const inner = s.el.cloneNode(true);
+    inner.removeAttribute('id');
+    inner.removeAttribute('tabindex');
+    inner.classList.remove('is-selected', 'is-dragging');
+    inner.classList.add('ml-drag-ghost__inner');
+    ghost.appendChild(inner);
+    document.body.appendChild(ghost);
+    s.ghost = ghost;
+    s.topbar = document.querySelector('.ml-topbar');
+    positionGhost();
+    document.documentElement.classList.add('ml-dnd-active');
+    setDragId(s.id);
+    if (s.touch && navigator.vibrate) { try { navigator.vibrate(10); } catch (e) { /* unsupported */ } }
+    s.raf = requestAnimationFrame(autoScroll);
+    hitTest();
+  }
+
+  function end() {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onCancel);
+    if (!s) return;
+    if (s.raf) cancelAnimationFrame(s.raf);
+    if (s.ghost) s.ghost.remove();
+    document.documentElement.classList.remove('ml-dnd-active');
+    s = null;
+    setOverIfChanged(null);
+    setDragId(null);
+  }
+
+  function onMove(e) {
+    if (!s || e.pointerId !== s.pointerId) return;
+    s.x = e.clientX;
+    s.y = e.clientY;
+    if (!s.moved && Math.hypot(s.x - s.sx, s.y - s.sy) > (s.touch ? DND_TOUCH_SLOP_PX : DND_SLOP_PX)) s.moved = true;
+    if (!s.lifted) {
+      if (!s.moved) return;
+      lift();
+    }
+    if (e.cancelable) e.preventDefault();
+    positionGhost();
+    hitTest();
+  }
+
+  function onUp(e) {
+    if (!s || e.pointerId !== s.pointerId) return;
+    const session = s;
+    if (session.lifted) { session.x = e.clientX; session.y = e.clientY; hitTest(); }
+    const target = overNow;
+    end();
+    // A press that never moved is a tap: the element's onClick handles selection.
+    if (!session.moved) return;
+    suppressUntil = performance.now() + DND_SUPPRESS_CLICK_MS;
+    if (target) {
+      setSelected(null);
+      onPlaceRef.current && onPlaceRef.current(target.key, session.id, { half: target.half, via: 'drag' });
+    }
+  }
+
+  function onCancel(e) {
+    if (s && e.pointerId === s.pointerId) end();
+  }
+
+  function press(e, id) {
+    if (s) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (!e.isPrimary) return;
+    const el = e.currentTarget;
+    const r = el.getBoundingClientRect();
+    s = {
+      id, el,
+      pointerId: e.pointerId,
+      touch: e.pointerType !== 'mouse',
+      x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY,
+      offX: e.clientX - r.left, offY: e.clientY - r.top,
+      w: r.width, h: r.height,
+      lifted: false, moved: false, ghost: null, raf: 0, topbar: null
+    };
+    window.addEventListener('pointermove', onMove, { passive: false });
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    // Touch users get immediate "picked up" feedback the moment they press.
+    if (s.touch) lift();
+  }
+
+  return {
+    scope,
+    press,
+    wasDrag: () => performance.now() < suppressUntil,
+    destroy: end
+  };
+}
+
+/* React hook wrapping the engine. Exercises call it once and spread
+ * `sourceProps(id)` onto pieces and `targetAttrs(key)` onto drop targets. */
+function useDragDrop(onPlace) {
+  const [selected, setSelected] = useS(null); // tap-selected source id
+  const [dragId, setDragId] = useS(null);     // source id currently floating
+  const [over, setOver] = useS(null);         // { key, half } under the piece
+  const onPlaceRef = useR(onPlace);
+  onPlaceRef.current = onPlace;
+
+  const engine = useM(
+    () => createDragEngine({ setOver, setDragId, setSelected, onPlaceRef }),
+    []
+  );
+  useE(() => () => engine.destroy(), [engine]);
+
+  // Escape drops a tap-selection.
+  useE(() => {
+    if (!selected) return;
+    const onKey = (e) => { if (e.key === 'Escape') setSelected(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selected]);
+
+  const select = useC((id) => setSelected(prev => (prev === id ? null : id)), []);
+  const clear = useC(() => setSelected(null), []);
+
+  return {
+    scope: engine.scope,
+    selected,
+    dragId,
+    over,
+    select,
+    clear,
+    wasDrag: engine.wasDrag,
+    /** Spread onto a draggable element. */
+    sourceProps: (id) => ({
+      onPointerDown: (e) => engine.press(e, id),
+      onContextMenu: (e) => e.preventDefault()
+    }),
+    /** Spread onto a drop-target element. */
+    targetAttrs: (key) => ({ 'data-drop-key': key, 'data-dnd-scope': engine.scope }),
+    /** Place the tap-selected piece on `key`. Returns true when something was placed. */
+    placeSelected: (key, info) => {
+      if (!selected) return false;
+      const id = selected;
+      setSelected(null);
+      onPlaceRef.current && onPlaceRef.current(key, id, { ...(info || {}), via: 'tap' });
+      return true;
+    }
+  };
+}
+
+/* A token in the bank. Drag it, or tap it to select and then tap a slot. */
+function DragToken({ id, kind, label, dnd }) {
+  const isSelected = dnd.selected === id;
+  const isDragging = dnd.dragId === id;
   return (
     <button
-      className="ml-token"
+      type="button"
+      className={`ml-token ml-token--draggable${isSelected ? ' is-selected' : ''}${isDragging ? ' is-dragging' : ''}`}
       data-kind={kind}
-      draggable={!used}
-      onDragStart={(e) => {
-        e.dataTransfer.setData('text/plain', id);
-        e.dataTransfer.effectAllowed = 'move';
-        onDragStart && onDragStart(id);
-      }}
-      onClick={() => onSelect && onSelect(id)}
-      disabled={used}
-      style={selected ? { outline: '2px solid var(--lg-spring)', outlineOffset: 2 } : {}}
-      aria-pressed={selected || undefined}
-      aria-label={`${kind} ${label}`}
+      {...dnd.sourceProps(id)}
+      onClick={() => { if (!dnd.wasDrag()) dnd.select(id); }}
+      aria-pressed={isSelected}
+      aria-label={`${kind} ${label}${isSelected ? ', selected. Now tap a slot' : ''}`}
     >
       {label}
     </button>
   );
 }
 
-/* A drop slot that accepts dragged token ids. */
-function DropSlot({
-  filledLabel, filledKind, onDrop, onClear, accepted = true, placeholder = '____', state
-}) {
-  const [over, setOver] = useS(false);
+/* The bank of unused tokens. Placed tokens leave the bank; clearing a slot returns them. */
+function TokenBank({ tokens, dnd, kind }) {
+  return (
+    <div className="ml-tokenbank" data-has-selection={!!dnd.selected}>
+      {tokens.length === 0
+        ? <span className="ml-tokenbank__empty">All pieces placed · tap a filled slot to send it back</span>
+        : tokens.map(t => (
+            <DragToken key={t.id} id={t.id} kind={kind || t.kind} label={t.label} dnd={dnd} />
+          ))}
+    </div>
+  );
+}
+
+/* A drop slot. Accepts a dragged token or the tap-selected one; tap a filled slot to clear it. */
+function DropSlot({ dropKey, dnd, filledId, filledLabel, filledKind, onClear, placeholder = '____' }) {
+  const isOver = !!(dnd.over && dnd.over.key === dropKey);
+  const awaiting = !filledLabel && !!(dnd.selected || dnd.dragId);
+  function activate() {
+    if (dnd.wasDrag()) return;
+    if (dnd.placeSelected(dropKey)) return;
+    if (filledLabel && onClear) onClear();
+  }
   return (
     <span
       className="ml-slot"
-      data-over={over}
+      {...dnd.targetAttrs(dropKey)}
+      data-over={isOver}
       data-filled={!!filledLabel}
-      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setOver(false);
-        const id = e.dataTransfer.getData('text/plain');
-        if (id) onDrop(id);
+      data-awaiting={awaiting}
+      onClick={activate}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
       }}
-      onClick={() => filledLabel && onClear && onClear()}
       role="button"
       tabIndex={0}
-      aria-label={filledLabel ? `Filled with ${filledLabel}, click to clear` : 'Empty slot'}
+      aria-label={filledLabel
+        ? `Filled with ${filledLabel}, ${dnd.selected ? 'tap to replace' : 'tap to clear'}`
+        : (dnd.selected ? 'Empty slot, tap to place the selected piece' : 'Empty slot')}
     >
       {filledLabel
-        ? <span className="ml-token" data-kind={filledKind} style={{ padding: '4px 8px' }}>{filledLabel}</span>
+        ? <span key={filledId || filledLabel} className="ml-token ml-token--placed" data-kind={filledKind}>{filledLabel}</span>
         : <span style={{ padding: '0 6px' }}>{placeholder}</span>}
     </span>
   );
@@ -95,6 +325,9 @@ function ShapeExercise({ level, onResult, onState }) {
       return next;
     });
   }
+  const dnd = useDragDrop((slotKey, tokenId) => placeAt(slotKey, tokenId));
+  const usedIds = new Set(Object.values(filled));
+  const availableBank = displayBank.filter(t => !usedIds.has(t.id));
 
   function check() {
     let correct = true;
@@ -117,7 +350,7 @@ function ShapeExercise({ level, onResult, onState }) {
   useE(() => { onState && onState({
     ready: allFilled, check,
     userState: { filled, bankById },
-    reset: () => { setFilled({}); setFeedback(null); setPerfect(true); }
+    reset: () => { setFilled({}); setFeedback(null); setPerfect(true); dnd.clear(); }
   }); }, [allFilled, filled, perfect]);
 
   return (
@@ -135,9 +368,11 @@ function ShapeExercise({ level, onResult, onState }) {
                 {f.type === 'oid'
                   ? <span style={{ color: '#FFC76A' }}>{f.value}</span>
                   : <DropSlot
+                      dropKey={f.slot}
+                      dnd={dnd}
+                      filledId={filled[f.slot]}
                       filledLabel={filled[f.slot] ? bankById[filled[f.slot]].label : null}
                       filledKind="value"
-                      onDrop={(id) => placeAt(f.slot, id)}
                       onClear={() => setFilled(p => { const n = { ...p }; delete n[f.slot]; return n; })}
                       placeholder="____"
                     />}
@@ -149,18 +384,8 @@ function ShapeExercise({ level, onResult, onState }) {
         </div>
       </div>
       <div>
-        <div className="ml-pane__label">Token bank — drag the JSON values</div>
-        <div className="ml-tokenbank">
-          {displayBank.map(t => (
-            <DragToken
-              key={t.id}
-              id={t.id}
-              kind="value"
-              label={t.label}
-              used={Object.values(filled).includes(t.id)}
-            />
-          ))}
-        </div>
+        <div className="ml-pane__label">Token bank — drag the JSON values, or tap one then tap a slot</div>
+        <TokenBank tokens={availableBank} dnd={dnd} kind="value" />
       </div>
       <Feedback {...(feedback || {})} state={feedback?.state} />
     </>
@@ -189,6 +414,9 @@ function BlocksExercise({ level, onResult, onState }) {
       return next;
     });
   }
+  const dnd = useDragDrop((slotKey, tokenId) => placeAt(slotKey, tokenId));
+  const usedIds = new Set(Object.values(filled));
+  const availableBank = displayBank.filter(t => !usedIds.has(t.id));
 
   function check() {
     let correct = true;
@@ -223,32 +451,22 @@ function BlocksExercise({ level, onResult, onState }) {
   useE(() => { onState && onState({
     ready: allFilled, check,
     userState: { filled, bankById },
-    reset: () => { setFilled({}); setFeedback(null); setPerfect(true); }
+    reset: () => { setFilled({}); setFeedback(null); setPerfect(true); dnd.clear(); }
   }); }, [allFilled, filled, perfect]);
 
   return (
     <>
       <div className="ml-code" style={{ marginBottom: 16 }}>
-        {renderSnippetReact(level.snippet, filled, bankById, placeAt, setFilled)}
+        {renderSnippetReact(level.snippet, filled, bankById, dnd, setFilled)}
       </div>
-      <div className="ml-pane__label">Token bank — drag the missing pieces</div>
-      <div className="ml-tokenbank">
-        {displayBank.map(t => (
-          <DragToken
-            key={t.id}
-            id={t.id}
-            kind={t.kind}
-            label={t.label}
-            used={Object.values(filled).includes(t.id)}
-          />
-        ))}
-      </div>
+      <div className="ml-pane__label">Token bank — drag the missing pieces, or tap one then tap a slot</div>
+      <TokenBank tokens={availableBank} dnd={dnd} />
       <Feedback {...(feedback || {})} state={feedback?.state} />
     </>
   );
 }
 
-function renderSnippetReact(snippet, filled, bankById, placeAt, setFilled) {
+function renderSnippetReact(snippet, filled, bankById, dnd, setFilled) {
   return snippet.map((piece, i) => {
     if (typeof piece === 'string') {
       return <React.Fragment key={i}>{piece}</React.Fragment>;
@@ -258,9 +476,11 @@ function renderSnippetReact(snippet, filled, bankById, placeAt, setFilled) {
     return (
       <DropSlot
         key={i}
+        dropKey={piece.slot}
+        dnd={dnd}
+        filledId={tid}
         filledLabel={tok?.label}
         filledKind={tok?.kind || 'value'}
-        onDrop={(id) => placeAt(piece.slot, id)}
         onClear={() => setFilled(p => { const n = { ...p }; delete n[piece.slot]; return n; })}
         placeholder="____"
       />
@@ -385,8 +605,7 @@ function ReorderExercise({ level, onResult, onState }) {
   const [order, setOrder] = useS(level.initial);
   const [feedback, setFeedback] = useS(null);
   const [perfect, setPerfect] = useS(true);
-  const draggingRef = useR(null);
-  const [overIndex, setOverIndex] = useS({ idx: null, half: null });
+  const [lastMoved, setLastMoved] = useS(null);
 
   function moveTo(from, to) {
     if (from === to) return;
@@ -397,6 +616,21 @@ function ReorderExercise({ level, onResult, onState }) {
       return next;
     });
   }
+
+  // Drag: insert before/after the hovered stage. Tap: take the tapped stage's position.
+  const dnd = useDragDrop((targetId, fromId, { half, via }) => {
+    if (targetId === fromId) return;
+    const fromIdx = order.indexOf(fromId);
+    const targetIdx = order.indexOf(targetId);
+    if (fromIdx < 0 || targetIdx < 0) return;
+    let toIdx = targetIdx;
+    if (via === 'drag') {
+      toIdx = targetIdx + (half === 'bot' ? 1 : 0);
+      if (fromIdx < toIdx) toIdx--;
+    }
+    moveTo(fromIdx, toIdx);
+    setLastMoved({ id: fromId, n: Date.now() });
+  });
 
   function check() {
     const correct = order.every((id, i) => stageMap[id].correct === i);
@@ -416,7 +650,7 @@ function ReorderExercise({ level, onResult, onState }) {
   useE(() => { onState && onState({
     ready: true, check,
     userState: { order, stageMap },
-    reset: () => { setOrder(level.initial); setFeedback(null); setPerfect(true); }
+    reset: () => { setOrder(level.initial); setFeedback(null); setPerfect(true); dnd.clear(); setLastMoved(null); }
   }); }, [order, perfect]);
 
   // keyboard support: focus + arrow keys
@@ -426,48 +660,57 @@ function ReorderExercise({ level, onResult, onState }) {
     moveTo(idx, to);
   }
 
+  function activateStage(id) {
+    if (dnd.wasDrag()) return;
+    if (dnd.selected && dnd.selected !== id) { dnd.placeSelected(id); return; }
+    dnd.select(id);
+  }
+
+  // Briefly pulse the stage that just moved so the change is easy to spot.
+  const listRef = useR(null);
+  useE(() => {
+    if (!lastMoved || !listRef.current) return;
+    const el = listRef.current.querySelector(`[data-stage-id="${CSS.escape(lastMoved.id)}"]`);
+    if (!el || !el.animate) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    el.animate([
+      { transform: 'scale(1.04)', boxShadow: '0 0 0 3px rgba(0,237,100,0.45)' },
+      { transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(0,237,100,0)' }
+    ], { duration: 360, easing: 'cubic-bezier(0.2, 0.6, 0.2, 1)' });
+  }, [lastMoved]);
+
   return (
     <>
-      <div className="ml-reorder" role="list" aria-label="pipeline stages">
+      <div className="ml-pane__label">
+        {dnd.selected
+          ? 'Now tap the position to move it to'
+          : 'Drag stages into order, or tap one stage then tap where it should go'}
+      </div>
+      <div className="ml-reorder" ref={listRef} role="list" aria-label="pipeline stages" data-has-selection={!!dnd.selected}>
         {order.map((id, idx) => {
           const stage = stageMap[id];
-          const isOver = overIndex.idx === idx;
+          const isOver = !!(dnd.over && dnd.over.key === id && dnd.dragId !== id);
+          const isSelected = dnd.selected === id;
+          const isDragging = dnd.dragId === id;
           return (
             <div
               key={id}
-              className={`ml-stage${draggingRef.current === id ? ' is-dragging' : ''}${
-                isOver && overIndex.half === 'top' ? ' is-over-top' :
-                isOver && overIndex.half === 'bot' ? ' is-over-bot' : ''
+              data-stage-id={id}
+              className={`ml-stage${isDragging ? ' is-dragging' : ''}${isSelected ? ' is-selected' : ''}${
+                isOver && dnd.over.half === 'top' ? ' is-over-top' :
+                isOver && dnd.over.half === 'bot' ? ' is-over-bot' : ''
               }`}
-              draggable
+              {...dnd.sourceProps(id)}
+              {...dnd.targetAttrs(id)}
               tabIndex={0}
               role="listitem"
-              aria-grabbed={draggingRef.current === id || undefined}
-              onDragStart={(e) => {
-                draggingRef.current = id;
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', id);
-              }}
-              onDragEnd={() => { draggingRef.current = null; setOverIndex({ idx: null, half: null }); }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                const rect = e.currentTarget.getBoundingClientRect();
-                const half = (e.clientY - rect.top) < rect.height / 2 ? 'top' : 'bot';
-                setOverIndex({ idx, half });
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                const fromId = e.dataTransfer.getData('text/plain');
-                const fromIdx = order.indexOf(fromId);
-                if (fromIdx < 0) return;
-                let toIdx = idx + (overIndex.half === 'bot' ? 1 : 0);
-                if (fromIdx < toIdx) toIdx--;
-                moveTo(fromIdx, toIdx);
-                setOverIndex({ idx: null, half: null });
-              }}
+              aria-selected={isSelected}
+              aria-label={`Stage ${idx + 1}: ${stage.code}${isSelected ? ', selected' : ''}`}
+              onClick={() => activateStage(id)}
               onKeyDown={(e) => {
                 if (e.key === 'ArrowUp')   { e.preventDefault(); bumpKey(idx, -1); }
                 if (e.key === 'ArrowDown') { e.preventDefault(); bumpKey(idx, +1); }
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateStage(id); }
               }}
             >
               <div className="ml-stage__num">{idx + 1}</div>
@@ -491,17 +734,24 @@ function ReorderExercise({ level, onResult, onState }) {
 function IndexExercise({ level, onResult, onState }) {
   const displayBank = useM(() => shuffleForDisplay(level.bank), [level]);
   const [drops, setDrops] = useS({}); // fieldName → indexId
-  const [selectedIndex, setSelectedIndex] = useS(null);
   const [feedback, setFeedback] = useS(null);
   const [perfect, setPerfect] = useS(true);
   const bankById = useM(() => Object.fromEntries(level.bank.map(b => [b.id, b])), [level]);
 
   const allFilled = level.fields.every(f => drops[f.name]);
 
+  // Each index type is used once, so placing it moves it off any other field.
   function place(fieldName, idxId) {
-    setDrops(prev => ({ ...prev, [fieldName]: idxId }));
-    setSelectedIndex(null);
+    setDrops(prev => {
+      const next = { ...prev };
+      for (const k of Object.keys(next)) if (next[k] === idxId) delete next[k];
+      next[fieldName] = idxId;
+      return next;
+    });
   }
+  const dnd = useDragDrop((fieldName, idxId) => place(fieldName, idxId));
+  const usedIds = new Set(Object.values(drops));
+  const availableBank = displayBank.filter(b => !usedIds.has(b.id));
 
   function check() {
     const correct = level.fields.every(f => drops[f.name] === f.need);
@@ -521,79 +771,72 @@ function IndexExercise({ level, onResult, onState }) {
   useE(() => { onState && onState({
     ready: allFilled, check,
     userState: { drops, bankById },
-    reset: () => { setDrops({}); setSelectedIndex(null); setFeedback(null); setPerfect(true); }
-  }); }, [allFilled, drops, selectedIndex, perfect]);
+    reset: () => { setDrops({}); setFeedback(null); setPerfect(true); dnd.clear(); }
+  }); }, [allFilled, drops, perfect]);
 
   return (
     <>
       <div className="ml-collection">
         <div className="ml-collection__name">db.{level.collection}</div>
         {level.fields.map(f => (
-          <div key={f.name} className="ml-field-row">
-            <div>
-              <span className="ml-field-row__name">{f.name}</span>
-              <span style={{ color: '#6F8390', margin: '0 8px' }}>·</span>
-              <span className="ml-field-row__type">{f.type}</span>
-              <div style={{ fontFamily: 'var(--ml-font-sans)', fontSize: 11.5, color: 'var(--ml-text-faint)' }}>
-                used for {f.used}
-              </div>
-            </div>
-            <FieldDrop
-              filled={drops[f.name]}
-              label={drops[f.name] ? bankById[drops[f.name]].label : null}
-              onDrop={(id) => place(f.name, id)}
-              onClear={() => setDrops(p => { const n = { ...p }; delete n[f.name]; return n; })}
-              onPick={() => selectedIndex && place(f.name, selectedIndex)}
-            />
-          </div>
+          <FieldDrop
+            key={f.name}
+            field={f}
+            dnd={dnd}
+            filledId={drops[f.name]}
+            label={drops[f.name] ? bankById[drops[f.name]].label : null}
+            onClear={() => setDrops(p => { const n = { ...p }; delete n[f.name]; return n; })}
+          />
         ))}
       </div>
       <div style={{ marginTop: 16 }}>
         <div className="ml-pane__label">Index types — drag onto each field, or tap an index then tap a row</div>
-        <div className="ml-tokenbank">
-          {displayBank.map(b => (
-            <DragToken
-              key={b.id}
-              id={b.id}
-              kind="index"
-              label={b.label}
-              selected={selectedIndex === b.id}
-              onSelect={() => setSelectedIndex(prev => prev === b.id ? null : b.id)}
-            />
-          ))}
-        </div>
+        <TokenBank tokens={availableBank} dnd={dnd} kind="index" />
       </div>
       <Feedback {...(feedback || {})} state={feedback?.state} />
     </>
   );
 }
 
-function FieldDrop({ filled, label, onDrop, onClear, onPick }) {
-  const [over, setOver] = useS(false);
+/* A collection field row; the whole row is the drop target for an index type. */
+function FieldDrop({ field, dnd, filledId, label, onClear }) {
+  const dropKey = field.name;
+  const isOver = !!(dnd.over && dnd.over.key === dropKey);
+  const awaiting = !filledId && !!(dnd.selected || dnd.dragId);
+  function activate() {
+    if (dnd.wasDrag()) return;
+    if (dnd.placeSelected(dropKey)) return;
+    if (filledId) onClear();
+  }
   return (
     <div
-      className="ml-field-row__drop"
-      data-over={over}
-      data-filled={!!filled}
-      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setOver(false);
-        const id = e.dataTransfer.getData('text/plain');
-        if (id) onDrop(id);
-      }}
-      onClick={() => filled ? onClear() : onPick && onPick()}
+      className="ml-field-row"
+      {...dnd.targetAttrs(dropKey)}
+      data-over={isOver}
+      data-awaiting={awaiting}
+      onClick={activate}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          filled ? onClear() : onPick && onPick();
-        }
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
       }}
       role="button"
       tabIndex={0}
+      aria-label={`${field.name}: ${label
+        ? `${label}, ${dnd.selected ? 'tap to replace' : 'tap to clear'}`
+        : (dnd.selected ? 'tap to place the selected index' : 'no index yet')}`}
     >
-      {label || 'Drop an index'}
+      <div>
+        <span className="ml-field-row__name">{field.name}</span>
+        <span style={{ color: '#6F8390', margin: '0 8px' }}>·</span>
+        <span className="ml-field-row__type">{field.type}</span>
+        <div style={{ fontFamily: 'var(--ml-font-sans)', fontSize: 11.5, color: 'var(--ml-text-faint)' }}>
+          used for {field.used}
+        </div>
+      </div>
+      <div className="ml-field-row__drop" data-over={isOver} data-filled={!!filledId}>
+        {label
+          ? <span key={filledId} className="ml-field-row__placed">{label}</span>
+          : 'Drop an index'}
+      </div>
     </div>
   );
 }

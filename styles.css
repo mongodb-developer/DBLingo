@@ -1043,6 +1043,89 @@ code, pre, .mono { font-family: var(--ml-font-mono); }
 .ml-token.is-dragging { opacity: 0.4; }
 .ml-token.is-used    { opacity: 0.3; pointer-events: none; }
 
+/* ---------- Pointer drag & drop (mouse + touch) ---------- */
+.ml-token--draggable,
+.ml-stage {
+  touch-action: none;               /* let pointer events drive the drag, not page panning */
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;      /* no iOS long-press callout */
+  -webkit-tap-highlight-color: transparent;
+}
+/* Source left behind while its floating copy is being dragged. */
+.ml-token--draggable.is-dragging,
+.ml-stage.is-dragging {
+  opacity: 0.28;
+  transform: scale(0.94);
+  border-style: dashed;
+  box-shadow: none;
+}
+/* Tap-selected token: glows and gently pulses until placed. */
+.ml-token.is-selected {
+  background: rgba(0,237,100,0.12);
+  border-color: var(--lg-spring);
+  box-shadow: 0 0 0 2px var(--lg-spring), 0 0 18px rgba(0,237,100,0.45);
+  transform: translateY(-2px) scale(1.06);
+  animation: ml-select-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ml-select-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--lg-spring), 0 0 12px rgba(0,237,100,0.35); }
+  50%      { box-shadow: 0 0 0 2px var(--lg-spring), 0 0 24px rgba(0,237,100,0.65); }
+}
+.ml-tokenbank[data-has-selection="true"] .ml-token:not(.is-selected) { opacity: 0.6; }
+.ml-tokenbank__empty {
+  align-self: center;
+  font-size: 12px;
+  color: var(--ml-text-faint);
+  font-style: italic;
+}
+
+/* Floating copy that follows the pointer. Positioned via transform from JS. */
+.ml-drag-ghost {
+  position: fixed;
+  top: 0; left: 0;
+  z-index: 1000;
+  pointer-events: none;
+  will-change: transform;
+}
+.ml-drag-ghost__inner {
+  width: 100%; height: 100%;
+  margin: 0;
+  cursor: grabbing;
+  background: var(--ml-bg-2) !important;
+  border-color: var(--lg-spring) !important;
+  box-shadow:
+    0 0 0 2px var(--lg-spring),
+    0 0 26px rgba(0,237,100,0.55),
+    0 18px 36px -10px rgba(0,0,0,0.75) !important;
+  transform: scale(1.12) rotate(-1.5deg);
+  animation: ml-lift 140ms var(--ml-ease) both;
+}
+/* On touch the piece rises above the finger so it is not hidden under it. */
+.ml-drag-ghost--touch .ml-drag-ghost__inner {
+  transform: translateY(calc(-1 * var(--ml-lift, 32px))) scale(1.18) rotate(-2deg);
+  animation-name: ml-lift-touch;
+}
+@keyframes ml-lift {
+  from { transform: scale(1) rotate(0); }
+  to   { transform: scale(1.12) rotate(-1.5deg); }
+}
+@keyframes ml-lift-touch {
+  from { transform: translateY(0) scale(1) rotate(0); }
+  to   { transform: translateY(calc(-1 * var(--ml-lift, 32px))) scale(1.18) rotate(-2deg); }
+}
+html.ml-dnd-active,
+html.ml-dnd-active * { cursor: grabbing !important; user-select: none !important; }
+
+/* Placed token pops into its slot. */
+.ml-token--placed {
+  padding: 4px 8px;
+  animation: ml-drop-in 260ms var(--ml-ease);
+}
+@keyframes ml-drop-in {
+  0%   { transform: scale(1.25); box-shadow: 0 0 0 3px rgba(0,237,100,0.55); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(0,237,100,0); }
+}
+
 .ml-slot {
   display: inline-flex;
   align-items: center;
@@ -1068,6 +1151,23 @@ code, pre, .mono { font-family: var(--ml-font-mono); }
   border-style: solid;
   padding: 2px 2px;
 }
+.ml-slot { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+/* Empty slots invite a drop while a token is selected or being dragged. */
+.ml-slot[data-awaiting="true"] {
+  border-color: rgba(0,237,100,0.55);
+  color: var(--lg-spring);
+  animation: ml-await 1.2s ease-in-out infinite;
+}
+.ml-slot[data-over="true"] {
+  border-style: solid;
+  box-shadow: 0 0 0 2px var(--lg-spring), 0 0 16px rgba(0,237,100,0.4);
+  transform: scale(1.06);
+  animation: none;
+}
+@keyframes ml-await {
+  0%, 100% { background: rgba(0,237,100,0.03); }
+  50%      { background: rgba(0,237,100,0.12); }
+}
 
 /* ---------- Reorder list (pipeline stages) ---------- */
 .ml-reorder {
@@ -1088,9 +1188,18 @@ code, pre, .mono { font-family: var(--ml-font-mono); }
   transition: background var(--ml-dur), border-color var(--ml-dur), transform var(--ml-dur);
 }
 .ml-stage:hover { background: var(--ml-bg-2); }
-.ml-stage.is-dragging { opacity: 0.4; transform: scale(0.98); }
-.ml-stage.is-over-top { box-shadow: 0 -2px 0 0 var(--lg-spring) inset; }
-.ml-stage.is-over-bot { box-shadow: 0 2px 0 0 var(--lg-spring) inset; }
+.ml-stage.is-over-top { box-shadow: 0 -3px 0 0 var(--lg-spring) inset, 0 -6px 14px -6px rgba(0,237,100,0.6); }
+.ml-stage.is-over-bot { box-shadow: 0 3px 0 0 var(--lg-spring) inset, 0 6px 14px -6px rgba(0,237,100,0.6); }
+.ml-stage.is-selected {
+  border-color: var(--lg-spring);
+  background: rgba(0,237,100,0.08);
+  box-shadow: 0 0 0 2px var(--lg-spring), 0 0 18px rgba(0,237,100,0.4);
+  transform: scale(1.02);
+}
+.ml-reorder[data-has-selection="true"] .ml-stage:not(.is-selected) {
+  border-style: dashed;
+  border-color: rgba(0,237,100,0.4);
+}
 .ml-stage__num {
   font-family: var(--ml-font-mono);
   font-size: 11px;
@@ -1303,6 +1412,36 @@ code, pre, .mono { font-family: var(--ml-font-mono); }
   flex-wrap: wrap;
 }
 .ml-actions__left, .ml-actions__right { display: flex; gap: 10px; }
+.ml-actions { scroll-margin-top: 80px; }
+
+/* Correct answer: draw the eye to Continue and the result pane. */
+.ml-btn--continue {
+  animation: ml-continue-in 420ms var(--ml-ease), ml-continue-glow 1.8s ease-in-out 420ms 2;
+}
+.ml-btn--continue:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+@keyframes ml-continue-in {
+  0%   { transform: scale(0.85); opacity: 0; }
+  60%  { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes ml-continue-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,237,100,0); }
+  50%      { box-shadow: 0 0 0 6px rgba(0,237,100,0.25), 0 0 24px rgba(0,237,100,0.45); }
+}
+.ml-pane--preview { transition: border-color 300ms var(--ml-ease); }
+.ml-pane--preview[data-revealed="true"] {
+  border-color: var(--ml-border-green);
+  animation: ml-preview-reveal 900ms var(--ml-ease);
+}
+@keyframes ml-preview-reveal {
+  0%   { box-shadow: 0 0 0 0 rgba(0,237,100,0.0); }
+  35%  { box-shadow: 0 0 0 3px rgba(0,237,100,0.35), 0 0 28px rgba(0,237,100,0.25); }
+  100% { box-shadow: 0 0 0 0 rgba(0,237,100,0.0); }
+}
+@media (max-width: 540px) {
+  .ml-actions__right { flex: 1 1 100%; }
+  .ml-actions__right .ml-btn--lg { flex: 1; }
+}
 
 /* ---------- Tooltip (inline hints on keywords) ---------- */
 .ml-hint {
@@ -1588,6 +1727,45 @@ code, pre, .mono { font-family: var(--ml-font-mono); }
   color: var(--lg-yellow-base);
   border-color: rgba(255,192,16,0.42);
   background: rgba(255,192,16,0.08);
+}
+.ml-field-row {
+  cursor: pointer;
+  transition: border-color var(--ml-dur), box-shadow var(--ml-dur), background var(--ml-dur);
+  -webkit-tap-highlight-color: transparent;
+}
+.ml-field-row[data-awaiting="true"] { border-color: rgba(0,237,100,0.4); }
+.ml-field-row[data-awaiting="true"] .ml-field-row__drop {
+  border-color: rgba(0,237,100,0.55);
+  color: var(--lg-spring);
+  animation: ml-await 1.2s ease-in-out infinite;
+}
+.ml-field-row[data-over="true"] {
+  border-color: var(--lg-spring);
+  box-shadow: 0 0 0 2px var(--lg-spring), 0 0 16px rgba(0,237,100,0.35);
+}
+.ml-field-row[data-over="true"] .ml-field-row__drop { animation: none; transform: scale(1.05); }
+.ml-field-row__placed { display: inline-block; animation: ml-drop-in 260ms var(--ml-ease); }
+
+/* ---------- Touch-friendly sizing ---------- */
+@media (pointer: coarse) {
+  .ml-token { min-height: 44px; padding: 10px 14px; font-size: 14px; }
+  .ml-tokenbank { gap: 10px; }
+  .ml-slot { min-height: 40px; min-width: 96px; }
+  .ml-token--placed { min-height: 0; padding: 6px 10px; }
+  .ml-field-row { padding: 10px 12px; }
+  .ml-field-row__drop { min-height: 40px; min-width: 120px; font-size: 12px; }
+  .ml-stage { padding: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ml-token.is-selected,
+  .ml-slot[data-awaiting="true"],
+  .ml-field-row[data-awaiting="true"] .ml-field-row__drop,
+  .ml-drag-ghost__inner,
+  .ml-token--placed,
+  .ml-field-row__placed,
+  .ml-pane--preview[data-revealed="true"],
+  .ml-btn--continue { animation: none !important; }
 }
 
 /* Explain plan card */

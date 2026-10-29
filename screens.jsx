@@ -410,6 +410,22 @@ function LevelScreen({ worldId, levelId, setView, onComplete, onMistake, progres
   // Reset per-level state when level changes
   u_e(() => { setExState({}); setHintsUsed(0); setMistakes(0); setResultBanner(null); }, [worldId, levelId]);
 
+  // On a correct answer, bring the Continue button and the result pane into view
+  // (on phones the preview stacks below the actions) and move focus to Continue.
+  const actionsRef = u_r(null);
+  const continueRef = u_r(null);
+  const previewRef = u_r(null);
+  const isCorrect = !!resultBanner?.correct;
+  u_e(() => {
+    if (!isCorrect) return;
+    const raf = requestAnimationFrame(() => revealResult({
+      actions: actionsRef.current,
+      button: continueRef.current,
+      preview: previewRef.current
+    }));
+    return () => cancelAnimationFrame(raf);
+  }, [isCorrect, levelId]);
+
   // Progress: levels in world cleared
   const cleared = world.levels.filter(l => progress[`${world.id}:${l.id}`]?.done).length;
   const progressPct = ((levelIdx + (resultBanner?.correct ? 1 : 0)) / world.levels.length) * 100;
@@ -502,7 +518,7 @@ function LevelScreen({ worldId, levelId, setView, onComplete, onMistake, progres
             </div>
           )}
 
-          <div className="ml-actions">
+          <div className="ml-actions" ref={actionsRef}>
             <div className="ml-actions__left">
               <button
                 className="ml-btn ml-btn--ghost"
@@ -521,7 +537,7 @@ function LevelScreen({ worldId, levelId, setView, onComplete, onMistake, progres
             </div>
             <div className="ml-actions__right">
               {resultBanner?.correct ? (
-                <button className="ml-btn ml-btn--primary ml-btn--lg" onClick={handleNext}>
+                <button ref={continueRef} className="ml-btn ml-btn--primary ml-btn--lg ml-btn--continue" onClick={handleNext}>
                   Continue <Icon name="ChevronRight" size={13} color="currentColor" />
                 </button>
               ) : (
@@ -537,7 +553,7 @@ function LevelScreen({ worldId, levelId, setView, onComplete, onMistake, progres
           </div>
         </div>
 
-        <div className="ml-pane">
+        <div className="ml-pane ml-pane--preview" ref={previewRef} data-revealed={isCorrect}>
           <div className="ml-pane__label">Live preview</div>
           <div className="ml-preview">
             <div className="ml-preview__title">db.{guessCollection(level)} · result</div>
@@ -556,6 +572,31 @@ function LevelScreen({ worldId, levelId, setView, onComplete, onMistake, progres
       </div>
     </div>
   );
+}
+
+/* Scroll the result area + Continue into view after a correct answer, then
+ * focus Continue. On a stacked (mobile) layout the actions row is aligned to
+ * the top under the sticky topbar so the preview below is visible too; on the
+ * side-by-side layout we only scroll if the button is off-screen. */
+function revealResult({ actions, button, preview }) {
+  if (!actions) return;
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const behavior = reduceMotion ? 'auto' : 'smooth';
+  const topbar = document.querySelector('.ml-topbar');
+  const topOffset = (topbar ? topbar.getBoundingClientRect().height : 0) + 12;
+  const rect = actions.getBoundingClientRect();
+  const stacked = !!(preview && preview.getBoundingClientRect().top >= rect.bottom - 1);
+  const offscreen = rect.top < topOffset || rect.bottom > window.innerHeight - 12;
+
+  if (stacked || offscreen) {
+    const target = stacked
+      ? rect.top + window.scrollY - topOffset
+      : rect.bottom + window.scrollY - window.innerHeight + 24;
+    window.scrollTo({ top: Math.max(0, target), behavior });
+  }
+  if (button) {
+    try { button.focus({ preventScroll: true }); } catch (e) { button.focus(); }
+  }
 }
 
 function getLevelHints(level) {
