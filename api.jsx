@@ -99,11 +99,30 @@ async function adminFetch(path, adminKey, options) {
   }
 }
 
-function createEvent(adminKey, { name, eventId, pack, startsAt, endsAt }) {
+function createEvent(adminKey, { name, eventId, pack, startsAt, endsAt, qrImage }) {
   return adminFetch('/events', adminKey, {
     method: 'POST',
-    body: JSON.stringify({ name, eventId: eventId || undefined, pack: pack || undefined, startsAt: startsAt || undefined, endsAt: endsAt || undefined })
+    body: JSON.stringify({ name, eventId: eventId || undefined, pack: pack || undefined, startsAt: startsAt || undefined, endsAt: endsAt || undefined, qrImage: qrImage || undefined })
   });
+}
+
+/** Admin: set / replace (data URL) or remove (null) an event's QR image. */
+function updateEventQr(adminKey, eventId, qrImage) {
+  return adminFetch('/events?id=' + encodeURIComponent(eventId), adminKey, {
+    method: 'PATCH',
+    body: JSON.stringify({ qrImage: qrImage || null })
+  });
+}
+
+/* Shown on event leaderboards that have no custom QR image. */
+const DEFAULT_EVENT_QR = 'assets/event-qr-default.png';
+
+/** URL of an event's QR image: its custom upload, or the default QR. */
+function getEventQrUrl(event) {
+  if (API_BASE && event && event.eventId && event.qrVersion) {
+    return API_BASE + '/events?id=' + encodeURIComponent(event.eventId) + '&qr=1&v=' + event.qrVersion;
+  }
+  return DEFAULT_EVENT_QR;
 }
 
 function listEvents(adminKey) {
@@ -134,6 +153,9 @@ window.DBLingoAPI = {
   fetchLeaderboard,
   fetchEvent,
   createEvent,
+  updateEventQr,
+  getEventQrUrl,
+  DEFAULT_EVENT_QR,
   listEvents,
   fetchEventLeadersAdmin,
   getInviteLink

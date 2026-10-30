@@ -1106,18 +1106,20 @@ function LeaderboardScreen({ totalXp, leaves, name = 'You', pack, eventId, event
   const board = status === 'stub' ? stubBoard : (liveBoard || []);
   const live = apiEnabled;
 
-  return (
-    <div className="ml-leaderboard">
-      {hasEvent && (
-        <div className="ml-lb-tabs" role="tablist" aria-label="Leaderboard scope">
-          <button role="tab" aria-selected={scope === 'event'} onClick={() => setScope('event')}>
-            {eventName || 'Event'}
-          </button>
-          <button role="tab" aria-selected={scope === 'global'} onClick={() => setScope('global')}>
-            Global
-          </button>
-        </div>
-      )}
+  // Event QR: the event's custom image, or the default DBLingo QR.
+  const [eventInfo, setEventInfo] = u_s(null);
+  u_e(() => {
+    if (!hasEvent) { setEventInfo(null); return; }
+    let cancelled = false;
+    window.DBLingoAPI.fetchEvent(eventId).then((ev) => { if (!cancelled) setEventInfo(ev); });
+    return () => { cancelled = true; };
+  }, [hasEvent, eventId]);
+  const qrSrc = window.DBLingoAPI
+    ? window.DBLingoAPI.getEventQrUrl(eventInfo || { eventId })
+    : 'assets/event-qr-default.png';
+
+  const standings = (
+    <>
       <h2>{showingEvent ? (eventName || 'Event leaderboard') : 'Weekly leaderboard'}</h2>
       <p>{showingEvent
         ? 'Event standings — ranked by XP earned since each player joined.'
@@ -1143,6 +1145,39 @@ function LeaderboardScreen({ totalXp, leaves, name = 'You', pack, eventId, event
           </div>
         ))}
       </div>
+    </>
+  );
+
+  return (
+    <div className={'ml-leaderboard' + (showingEvent ? ' ml-leaderboard--event' : '')}>
+      {hasEvent && (
+        <div className="ml-lb-tabs" role="tablist" aria-label="Leaderboard scope">
+          <button role="tab" aria-selected={scope === 'event'} onClick={() => setScope('event')}>
+            {eventName || 'Event'}
+          </button>
+          <button role="tab" aria-selected={scope === 'global'} onClick={() => setScope('global')}>
+            Global
+          </button>
+        </div>
+      )}
+      {showingEvent ? (
+        <div className="ml-lb-event-layout">
+          <div className="ml-lb-event-layout__board">{standings}</div>
+          <aside className="ml-lb-qr" aria-label={`QR code for ${eventName || 'this event'}`}>
+            <div className="ml-lb-qr__frame">
+              <img
+                src={qrSrc}
+                alt={`QR code for ${eventName || 'this event'}`}
+                onError={(e) => {
+                  const fallback = window.DBLingoAPI?.DEFAULT_EVENT_QR || 'assets/event-qr-default.png';
+                  if (!e.currentTarget.src.endsWith(fallback)) e.currentTarget.src = fallback;
+                }}
+              />
+            </div>
+            <div className="ml-lb-qr__caption">Scan to join</div>
+          </aside>
+        </div>
+      ) : standings}
       {showingEvent ? (
         <div className="ml-invite">
           <h3>Invite people to {eventName || 'this event'}.</h3>
@@ -1174,7 +1209,74 @@ function LeaderboardScreen({ totalXp, leaves, name = 'You', pack, eventId, event
  * sessionStorage for this tab and sent as a Bearer token.
  * ============================================================ */
 const ADMIN_KEY_STORAGE = 'mongolingo.adminKey';
-const EMPTY_EVENT_FORM = { name: '', eventId: '', pack: '', startsAt: '', endsAt: '' };
+const EMPTY_EVENT_FORM = { name: '', eventId: '', pack: '', startsAt: '', endsAt: '', qrImage: '' };
+const QR_MAX_BYTES = 1024 * 1024; // matches the backend cap
+const QR_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif';
+
+/** Read a picked image file as a data URL, enforcing type and size. */
+function readQrFile(file) {
+  return new Promise((resolve) => {
+    if (!file) return resolve({ error: 'No file selected' });
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) return resolve({ error: 'QR must be a PNG, JPEG, WebP or GIF image' });
+    if (file.size > QR_MAX_BYTES) return resolve({ error: 'QR image must be 1 MB or smaller' });
+    const reader = new FileReader();
+    reader.onload = () => resolve({ dataUrl: String(reader.result) });
+    reader.onerror = () => resolve({ error: 'Could not read the image' });
+    reader.readAsDataURL(file);
+  });
+}
+
+/* Admin: preview + upload / replace / remove an existing event's QR image. */
+function AdminEventQr({ adminKey, event, onUpdated }) {
+  const api = window.DBLingoAPI;
+  const fileRef = u_r(null);
+  const [busy, setBusy] = u_s(false);
+  const [error, setError] = u_s('');
+  const hasCustom = !!event.qrVersion;
+
+  async function onPick(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setError('');
+    const read = await readQrFile(file);
+    if (read.error) { setError(read.error); return; }
+    setBusy(true);
+    const res = await api.updateEventQr(adminKey, event.eventId, read.dataUrl);
+    setBusy(false);
+    if (!res || res.error) { setError(res?.error || 'Could not save QR'); return; }
+    onUpdated(res.event);
+  }
+
+  async function onRemove() {
+    setBusy(true); setError('');
+    const res = await api.updateEventQr(adminKey, event.eventId, null);
+    setBusy(false);
+    if (!res || res.error) { setError(res?.error || 'Could not remove QR'); return; }
+    onUpdated(res.event);
+  }
+
+  return (
+    <div className="ml-admin__qr">
+      <img className="ml-admin__qr-thumb" src={api.getEventQrUrl(event)} alt={`QR for ${event.name}`} />
+      <div className="ml-admin__qr-body">
+        <small>{hasCustom ? 'Custom QR code' : 'Default QR code'} · shown next to the event leaderboard</small>
+        <div className="ml-admin__leaders-bar">
+          <input ref={fileRef} type="file" accept={QR_ACCEPT} hidden onChange={onPick} />
+          <button type="button" className="ml-btn ml-btn--ghost" disabled={busy} onClick={() => fileRef.current && fileRef.current.click()}>
+            {busy ? 'Saving…' : (hasCustom ? 'Replace QR' : 'Upload QR')}
+          </button>
+          {hasCustom && (
+            <button type="button" className="ml-btn ml-btn--ghost" disabled={busy} onClick={onRemove}>
+              Use default QR
+            </button>
+          )}
+        </div>
+        {error && <div className="ml-admin__error" role="alert">{error}</div>}
+      </div>
+    </div>
+  );
+}
 
 /* Admin-only: an event's top players with contact details (phone) so
  * organisers can reach the winners. Phone numbers are fetched from an
@@ -1321,6 +1423,20 @@ function AdminEventsScreen({ packs }) {
   const toIso = (v) => (v ? new Date(v).toISOString() : undefined);
   const setField = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
 
+  async function onPickCreateQr(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const read = await readQrFile(file);
+    if (read.error) { setError(read.error); return; }
+    setError('');
+    setForm(f => ({ ...f, qrImage: read.dataUrl }));
+  }
+
+  function replaceEvent(updated) {
+    setEvents(list => (list || []).map(ev => ev.eventId === updated.eventId ? updated : ev));
+  }
+
   async function onCreate(e) {
     e.preventDefault();
     setBusy(true); setError(''); setCreated(null);
@@ -1329,7 +1445,8 @@ function AdminEventsScreen({ packs }) {
       eventId: form.eventId.trim().toLowerCase(),
       pack: form.pack,
       startsAt: toIso(form.startsAt),
-      endsAt: toIso(form.endsAt)
+      endsAt: toIso(form.endsAt),
+      qrImage: form.qrImage || undefined
     });
     setBusy(false);
     if (!res || res.error) { setError(res?.error || 'Could not create event'); return; }
@@ -1387,6 +1504,23 @@ function AdminEventsScreen({ packs }) {
             <span>Ends (optional)</span>
             <input type="datetime-local" value={form.endsAt} onChange={setField('endsAt')} />
           </label>
+          <div className="ml-field ml-field--wide">
+            <span>QR code image (optional — the default QR is shown if empty)</span>
+            <div className="ml-admin__qr">
+              <img className="ml-admin__qr-thumb" src={form.qrImage || api.DEFAULT_EVENT_QR} alt="QR preview" />
+              <div className="ml-admin__leaders-bar">
+                <label className="ml-btn ml-btn--ghost ml-admin__file">
+                  {form.qrImage ? 'Change image' : 'Choose image'}
+                  <input type="file" accept={QR_ACCEPT} hidden onChange={onPickCreateQr} />
+                </label>
+                {form.qrImage && (
+                  <button type="button" className="ml-btn ml-btn--ghost" onClick={() => setForm(f => ({ ...f, qrImage: '' }))}>
+                    Use default
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
         {error && <div className="ml-admin__error" role="alert">{error}</div>}
         <div className="ml-event-actions">
@@ -1419,6 +1553,7 @@ function AdminEventsScreen({ packs }) {
                 <small>{ev.status}{ev.pack ? ` · ${packs[ev.pack]?.name || ev.pack}` : ''}{ev.endsAt ? ` · ends ${new Date(ev.endsAt).toLocaleString()}` : ''}</small>
               </div>
               <InviteLinkField eventId={ev.eventId} eventName={ev.name} />
+              <AdminEventQr adminKey={adminKey} event={ev} onUpdated={replaceEvent} />
               <AdminEventLeaders adminKey={adminKey} event={ev} />
             </div>
           ))}

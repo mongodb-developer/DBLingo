@@ -20,6 +20,8 @@ works exactly as before with its built-in stub leaderboard.
 | GET    | `/api/events`       | `?id=<eventId>`                               | Resolve an invite link (public) |
 | GET    | `/api/events`       | — (admin)                                     | List events |
 | GET    | `/api/events`       | `?id=<eventId>&leaders=1&limit=25` (admin)    | Event top players **with phone** (admin page only) |
+| GET    | `/api/events`       | `?id=<eventId>&qr=1&v=<qrVersion>`            | Event QR image (public; 404 → frontend shows the default QR) |
+| PATCH  | `/api/events`       | `?id=<eventId>` `{ qrImage: <data URL> \| null }` (admin) | Set / replace / remove an event's QR image |
 | POST   | `/api/events`       | `{ name, eventId?, pack?, startsAt?, endsAt? }` (admin) | Create an event |
 
 Admin endpoints require `Authorization: Bearer <ADMIN_KEY>`. If `ADMIN_KEY` isn't set,
@@ -48,8 +50,8 @@ https://mongodb-developer.github.io/DBLingo/?event=<eventId>
 ```js
 // players — global record, one per browser (phone is private: never returned by /api/leaderboard)
 { userId, name, company, phone, pack, xp, leaves, streak, createdAt, updatedAt }
-// events — admin-created
-{ eventId, name, pack, startsAt, endsAt, createdAt }
+// events — admin-created (qr is optional; without it the default QR asset is shown)
+{ eventId, name, pack, startsAt, endsAt, createdAt, qr?: { data: Binary, contentType, updatedAt } }
 // event_scores — one per (eventId, userId)
 { eventId, userId, name, company, xp, leaves, streak, totalXp,
   baselineXp, baselineLeaves, joinedAt, updatedAt }

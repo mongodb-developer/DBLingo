@@ -38,7 +38,10 @@ export function eventStatus(event, now = new Date()) {
   return 'live';
 }
 
-/** Public shape of an event (safe to return to any client). */
+/** Public shape of an event (safe to return to any client).
+ *  `qrVersion` is set when the event has a custom QR image; clients load it
+ *  from GET /api/events?id=<id>&qr=1&v=<qrVersion> (the version busts caches).
+ *  Events without one fall back to the frontend's default QR. */
 export function publicEvent(event) {
   if (!event) return null;
   return {
@@ -47,15 +50,49 @@ export function publicEvent(event) {
     pack: event.pack || null,
     startsAt: event.startsAt || null,
     endsAt: event.endsAt || null,
-    status: eventStatus(event)
+    status: eventStatus(event),
+    qrVersion: event.qr && event.qr.updatedAt ? new Date(event.qr.updatedAt).getTime() : null
   };
 }
+
+/** Never load the QR bytes for ordinary lookups — only the image endpoint needs them. */
+export const EVENT_PROJECTION = { _id: 0, 'qr.data': 0 };
 
 export async function findEvent(eventId) {
   const id = cleanEventId(eventId);
   if (!id) return null;
   const events = await getEvents();
-  return events.findOne({ eventId: id }, { projection: { _id: 0 } });
+  return events.findOne({ eventId: id }, { projection: EVENT_PROJECTION });
+}
+
+/* ---------- QR images ---------- */
+
+export const QR_MAX_BYTES = 1024 * 1024; // 1 MB decoded
+
+/** Identify an image by its magic bytes (the declared type isn't trusted). */
+function sniffImageType(buf) {
+  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 6 && buf.toString('ascii', 0, 4) === 'GIF8') return 'image/gif';
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
+
+/**
+ * Parse a `data:image/...;base64,...` URL into { data: Buffer, contentType }.
+ * Returns { error } when it isn't a supported raster image within the size cap.
+ * SVG is rejected on purpose (it can carry scripts).
+ */
+export function parseQrDataUrl(value) {
+  if (typeof value !== 'string') return { error: 'qrImage must be a data URL' };
+  const m = value.match(/^data:image\/[a-z0-9.+-]+;base64,([A-Za-z0-9+/=\s]+)$/i);
+  if (!m) return { error: 'qrImage must be a base64 PNG, JPEG, WebP or GIF data URL' };
+  const data = Buffer.from(m[1].replace(/\s+/g, ''), 'base64');
+  if (!data.length) return { error: 'qrImage is empty' };
+  if (data.length > QR_MAX_BYTES) return { error: 'qrImage must be 1 MB or smaller' };
+  const contentType = sniffImageType(data);
+  if (!contentType) return { error: 'qrImage must be a PNG, JPEG, WebP or GIF image' };
+  return { data, contentType };
 }
 
 /**

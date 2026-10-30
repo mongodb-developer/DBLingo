@@ -14,14 +14,21 @@
  *   reach the winners. Phone numbers are only ever returned here — the public
  *   /api/leaderboard never includes them.
  *
- * POST { name, eventId?, pack?, startsAt?, endsAt? }   (admin only)
+ * GET  ?id=<eventId>&qr=1&v=<qrVersion>   (public)
+ *   -> the event's custom QR image (PNG/JPEG/WebP/GIF bytes), 404 if none.
+ *
+ * POST { name, eventId?, pack?, startsAt?, endsAt?, qrImage? }   (admin only)
  *   -> { ok, event }
  *   Header: Authorization: Bearer <ADMIN_KEY>
  *   eventId is optional — a slug is generated from the name if omitted.
+ *   qrImage is an optional base64 data URL (≤ 1 MB, raster only).
+ *
+ * PATCH ?id=<eventId>  { qrImage: <data URL> | null }   (admin only)
+ *   -> { ok, event }   set / replace / remove the event's QR image.
  */
 import { getEvents, getEventScores } from './_db.js';
 import { handlePreflight, readJsonBody } from './_cors.js';
-import { checkAdmin, cleanEventId, findEvent, publicEvent, slugify } from './_events.js';
+import { checkAdmin, cleanEventId, findEvent, publicEvent, slugify, parseQrDataUrl, EVENT_PROJECTION } from './_events.js';
 
 function parseDate(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -80,12 +87,36 @@ async function handleAdminLeaders(req, res, id, limitParam) {
   return res.status(200).json({ ok: true, event: publicEvent(event), leaders: ranked });
 }
 
+/** Public: stream an event's custom QR image (404 when it has none, so the
+ *  frontend falls back to the default QR). Cached hard — the `v` param in the
+ *  URL changes whenever the image is replaced. */
+async function handleQrImage(res, id) {
+  const eventIdClean = cleanEventId(id);
+  if (!eventIdClean) return res.status(404).json({ error: 'Event not found' });
+  const events = await getEvents();
+  const doc = await events.findOne({ eventId: eventIdClean }, { projection: { _id: 0, qr: 1 } });
+  if (!doc || !doc.qr || !doc.qr.data) return res.status(404).json({ error: 'No QR image for this event' });
+
+  // The driver returns BSON Binary; normalise to a Node Buffer.
+  const raw = doc.qr.data;
+  const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw.buffer ?? raw);
+  res.setHeader('Content-Type', doc.qr.contentType || 'image/png');
+  res.setHeader('Content-Length', String(buf.length));
+  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  return res.status(200).end(buf);
+}
+
 async function handleGet(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const id = url.searchParams.get('id');
 
   if (id && url.searchParams.has('leaders')) {
     return handleAdminLeaders(req, res, id, url.searchParams.get('limit'));
+  }
+
+  if (id && url.searchParams.has('qr')) {
+    return handleQrImage(res, id);
   }
 
   if (id) {
@@ -97,7 +128,7 @@ async function handleGet(req, res) {
   if (!requireAdmin(req, res)) return;
   const events = await getEvents();
   const list = await events
-    .find({}, { projection: { _id: 0 } })
+    .find({}, { projection: EVENT_PROJECTION })
     .sort({ createdAt: -1 })
     .limit(100)
     .toArray();
@@ -107,9 +138,16 @@ async function handleGet(req, res) {
 async function handlePost(req, res) {
   if (!requireAdmin(req, res)) return;
 
-  const { name, eventId, pack, startsAt, endsAt } = readJsonBody(req);
+  const { name, eventId, pack, startsAt, endsAt, qrImage } = readJsonBody(req);
   const cleanName = typeof name === 'string' ? name.trim().slice(0, 80) : '';
   if (!cleanName) return res.status(400).json({ error: 'name is required' });
+
+  let qr = null;
+  if (qrImage !== undefined && qrImage !== null && qrImage !== '') {
+    const parsed = parseQrDataUrl(qrImage);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    qr = { data: parsed.data, contentType: parsed.contentType, updatedAt: new Date() };
+  }
 
   let id;
   if (eventId !== undefined && eventId !== null && eventId !== '') {
@@ -140,6 +178,7 @@ async function handlePost(req, res) {
     endsAt: end,
     createdAt: new Date()
   };
+  if (qr) doc.qr = qr;
 
   const events = await getEvents();
   try {
@@ -151,12 +190,46 @@ async function handlePost(req, res) {
   return res.status(201).json({ ok: true, event: publicEvent(doc) });
 }
 
+/**
+ * PATCH ?id=<eventId>   (admin only)
+ * Body: { qrImage: "data:image/png;base64,..." }  -> set / replace the QR image
+ *       { qrImage: null }                          -> remove it (default QR is shown)
+ */
+async function handlePatch(req, res) {
+  if (!requireAdmin(req, res)) return;
+  const url = new URL(req.url, 'http://localhost');
+  const id = cleanEventId(url.searchParams.get('id') || '');
+  if (!id) return res.status(400).json({ error: 'id is required' });
+
+  const body = readJsonBody(req);
+  if (!('qrImage' in body)) return res.status(400).json({ error: 'Nothing to update (expected qrImage)' });
+
+  let update;
+  if (body.qrImage === null || body.qrImage === '') {
+    update = { $unset: { qr: '' } };
+  } else {
+    const parsed = parseQrDataUrl(body.qrImage);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    update = { $set: { qr: { data: parsed.data, contentType: parsed.contentType, updatedAt: new Date() } } };
+  }
+
+  const events = await getEvents();
+  const result = await events.findOneAndUpdate(
+    { eventId: id },
+    update,
+    { returnDocument: 'after', projection: EVENT_PROJECTION }
+  );
+  if (!result) return res.status(404).json({ error: 'Event not found' });
+  return res.status(200).json({ ok: true, event: publicEvent(result) });
+}
+
 export default async function handler(req, res) {
   if (handlePreflight(req, res)) return;
 
   try {
     if (req.method === 'GET') return await handleGet(req, res);
     if (req.method === 'POST') return await handlePost(req, res);
+    if (req.method === 'PATCH') return await handlePatch(req, res);
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('[dblingo] events error:', err);
