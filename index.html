@@ -2,6 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!-- Pins relative URLs to the app root, so history.pushState to /leaderboard/
+       can't re-point assets. scripts/sync-routes.mjs rewrites this to "../" in
+       route copies (leaderboard/index.html). Edit index.html, then re-sync. -->
+  <base href="./" data-route-base>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>DBLingo — learn MongoDB by doing</title>
   <link rel="icon" type="image/svg+xml" href="assets/leaf.svg">

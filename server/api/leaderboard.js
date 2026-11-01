@@ -17,6 +17,7 @@
 import { getPlayers, getEventScores } from './_db.js';
 import { handlePreflight, readJsonBody } from './_cors.js';
 import { findEvent, publicEvent, upsertEventScore } from './_events.js';
+import { archiveIfDifferentPerson } from './_players.js';
 
 function toInt(value, fallback = 0) {
   const n = Number(value);
@@ -70,7 +71,10 @@ async function handlePost(req, res) {
   }
 
   const now = new Date();
-  const set = { xp: toInt(xp), leaves: toInt(leaves), streak: toInt(streak), updatedAt: now };
+  // Earned totals only ever go up: a device that resets local progress
+  // (e.g. "Change path" on an older frontend) can't wipe a saved score.
+  const set = { streak: toInt(streak), updatedAt: now };
+  const max = { xp: toInt(xp), leaves: toInt(leaves) };
   if (typeof name === 'string') set.name = name.trim().slice(0, 80);
   if (typeof company === 'string') set.company = company.trim().slice(0, 120);
   if (typeof pack === 'string') set.pack = pack.trim().slice(0, 60);
@@ -80,24 +84,27 @@ async function handlePost(req, res) {
   const setOnInsert = { userId, createdAt: now };
   if (!('name' in set)) setOnInsert.name = 'Anonymous';
 
+  if (set.name) await archiveIfDifferentPerson(userId, { name: set.name });
+
   const players = await getPlayers();
   await players.updateOne(
     { userId },
-    { $set: set, $setOnInsert: setOnInsert },
+    { $set: set, $max: max, $setOnInsert: setOnInsert },
     { upsert: true }
   );
 
-  const me = await players.findOne({ userId }, { projection: { _id: 0 } });
+  const me = await players.findOne({ userId }, { projection: { _id: 0, phone: 0 } });
   // Rank = number of players with strictly higher xp, +1.
   const ahead = await players.countDocuments({
     ...(me?.pack ? { pack: me.pack } : {}),
     xp: { $gt: me?.xp ?? 0 }
   });
 
+  // Use the stored (never-decreasing) totals for the event score too.
   const event = eventId
     ? await upsertEventScore({
       eventId, userId,
-      xp: set.xp, leaves: set.leaves, streak: set.streak,
+      xp: me?.xp ?? max.xp, leaves: me?.leaves ?? max.leaves, streak: set.streak,
       name: me?.name, company: me?.company
     })
     : null;

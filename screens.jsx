@@ -7,6 +7,9 @@ const { useState: u_s, useEffect: u_e, useRef: u_r, useMemo: u_m, useCallback: u
  * ============================================================ */
 const COMPARISON_PACK_IDS = ['postgres'];
 
+/* Live leaderboards poll the backend at this interval while visible. */
+const LEADERBOARD_REFRESH_MS = 20000;
+
 /* Phone numbers: digits plus common separators, optional leading "+",
  * 7–15 digits total (E.164 max). Mirrors server/api/register.js. */
 function isValidPhone(value) {
@@ -396,34 +399,56 @@ function isWorldDone(world, progress) {
 /* ============================================================
  * Level screen — split pane.
  * ============================================================ */
-function LevelScreen({ worldId, levelId, setView, onComplete, onMistake, progress }) {
+/* Level scoring: base XP minus a penalty per hint revealed and per wrong
+ * check, never below a small floor for finishing. A leaf needs a clean run
+ * (no hints, no mistakes). Penalties are tracked per level in app state, so
+ * leaving/re-entering a level or pressing Reset doesn't clear them. */
+const LEVEL_SCORING = { hintPenalty: 5, mistakePenalty: 5, minXp: 5 };
+
+function levelBaseXp(level) {
+  return level.kind === 'reorder' ? 30 : 25;
+}
+
+function scoreLevel(level, hints, mistakes) {
+  const base = levelBaseXp(level);
+  const penalty = hints * LEVEL_SCORING.hintPenalty + mistakes * LEVEL_SCORING.mistakePenalty;
+  return { base, penalty: Math.min(penalty, base - LEVEL_SCORING.minXp), xp: Math.max(LEVEL_SCORING.minXp, base - penalty) };
+}
+
+function LevelScreen({ worldId, levelId, setView, onComplete, onMistake, onHint, attempt, progress }) {
   const world = window.WORLDS.find(w => w.id === worldId);
   const levelIdx = world.levels.findIndex(l => l.id === levelId);
   const level = world.levels[levelIdx];
 
   const [exState, setExState] = u_s({});       // ready/check/reset/userState from the active exercise
-  const [hintsUsed, setHintsUsed] = u_s(0);
-  const [mistakes, setMistakes] = u_s(0);
+  // Hints / mistakes live in app state (persisted per level) so they survive
+  // navigation and Reset — penalties can't be dodged by leaving the level.
+  const hintsUsed = attempt?.hints || 0;
+  const mistakes = attempt?.mistakes || 0;
   const [resultBanner, setResultBanner] = u_s(null);
   const previewState = resultBanner?.correct && exState.levelId === level.id ? exState.userState : null;
   const handleExerciseState = u_c((state) => {
     setExState({ ...state, levelId: level.id });
   }, [level.id]);
 
+  const alreadyDone = !!progress[`${worldId}:${levelId}`]?.done;
+  const reward = scoreLevel(level, hintsUsed, mistakes);
+
   function handleResult({ correct, perfect }) {
     setResultBanner({ correct, perfect });
-    if (!correct) {
-      setMistakes(m => m + 1);
-      onMistake && onMistake();
-    }
+    if (!correct) onMistake && onMistake();
   }
 
   function handleNext() {
     if (resultBanner?.correct) {
       onComplete({
         worldId, levelId,
-        xp: level.kind === 'reorder' ? 30 : 25,
-        leaf: !!resultBanner.perfect && hintsUsed === 0,
+        xp: reward.xp,
+        baseXp: reward.base,
+        hints: hintsUsed,
+        mistakes,
+        // A leaf needs a clean run: no hints and no wrong checks this attempt.
+        leaf: !!resultBanner.perfect && hintsUsed === 0 && mistakes === 0,
         clean: mistakes === 0
       });
       const nextIdx = levelIdx + 1;
@@ -435,8 +460,8 @@ function LevelScreen({ worldId, levelId, setView, onComplete, onMistake, progres
     }
   }
 
-  // Reset per-level state when level changes
-  u_e(() => { setExState({}); setHintsUsed(0); setMistakes(0); setResultBanner(null); }, [worldId, levelId]);
+  // Reset per-level UI state when level changes (penalties persist in app state)
+  u_e(() => { setExState({}); setResultBanner(null); }, [worldId, levelId]);
 
   // On a correct answer, bring the Continue button and the result pane into view
   // (on phones the preview stacks below the actions) and move focus to Continue.
@@ -459,7 +484,7 @@ function LevelScreen({ worldId, levelId, setView, onComplete, onMistake, progres
   const progressPct = ((levelIdx + (resultBanner?.correct ? 1 : 0)) / world.levels.length) * 100;
   const levelHints = getLevelHints(level);
   const levelDocs = level.docs || (window.LEVEL_DOCS && window.LEVEL_DOCS[level.id]) || [];
-  const revealedHints = levelHints.slice(0, hintsUsed);
+  const revealedHints = levelHints.slice(0, Math.min(hintsUsed, levelHints.length));
   const hasMoreHints = hintsUsed < levelHints.length;
 
   let ExerciseComp;
@@ -495,6 +520,24 @@ function LevelScreen({ worldId, levelId, setView, onComplete, onMistake, progres
         <div className="ml-pane">
           <div className="ml-pane__label">L{levelIdx + 1} · {level.kind}</div>
           <h2 className="ml-prompt">{level.title}</h2>
+          <div className="ml-level-reward" aria-live="polite" data-penalized={!alreadyDone && reward.penalty > 0}>
+            {alreadyDone ? (
+              <span>Already cleared · replay for practice (no XP)</span>
+            ) : (
+              <>
+                <span className="ml-level-reward__xp">+{reward.xp} XP</span>
+                {reward.penalty > 0 ? (
+                  <span>
+                    of {reward.base}
+                    {hintsUsed > 0 && <> · {hintsUsed} hint{hintsUsed === 1 ? '' : 's'} (−{hintsUsed * LEVEL_SCORING.hintPenalty})</>}
+                    {mistakes > 0 && <> · {mistakes} mistake{mistakes === 1 ? '' : 's'} (−{mistakes * LEVEL_SCORING.mistakePenalty})</>}
+                  </span>
+                ) : (
+                  <span>Each hint or wrong check costs {LEVEL_SCORING.hintPenalty} XP · clean run earns a leaf</span>
+                )}
+              </>
+            )}
+          </div>
           <p className="ml-prompt-sub"><ConceptBody text={level.prompt} /></p>
           {level.sub && (
             <p style={{ color: 'var(--ml-text-faint)', fontSize: 12.5, marginTop: -10, marginBottom: 18 }}>
@@ -556,11 +599,11 @@ function LevelScreen({ worldId, levelId, setView, onComplete, onMistake, progres
               </button>
               <button
                 className="ml-btn ml-btn--ghost"
-                onClick={() => hasMoreHints && setHintsUsed(h => Math.min(h + 1, levelHints.length))}
+                onClick={() => hasMoreHints && onHint && onHint()}
                 disabled={!hasMoreHints}
-                title={hasMoreHints ? 'Reveal the next hint' : 'All hints shown'}
+                title={hasMoreHints ? (alreadyDone ? 'Reveal the next hint' : `Reveal the next hint (−${LEVEL_SCORING.hintPenalty} XP)`) : 'All hints shown'}
               >
-                <Icon name="Bulb" size={13} color="currentColor" /> {hasMoreHints ? `Hint (${hintsUsed}/${levelHints.length})` : 'All hints shown'}
+                <Icon name="Bulb" size={13} color="currentColor" /> {hasMoreHints ? `Hint (${Math.min(hintsUsed, levelHints.length)}/${levelHints.length})${alreadyDone ? '' : ` · −${LEVEL_SCORING.hintPenalty} XP`}` : 'All hints shown'}
               </button>
             </div>
             <div className="ml-actions__right">
@@ -1079,28 +1122,53 @@ function LeaderboardScreen({ totalXp, leaves, name = 'You', pack, eventId, event
 
   u_e(() => { if (!hasEvent) setScope('global'); }, [hasEvent]);
 
+  // Auto-refresh: re-fetch every LEADERBOARD_REFRESH_MS while the tab is
+  // visible (and immediately when it becomes visible again). Refreshes are
+  // silent — the current board stays on screen instead of flashing "Loading".
+  const [lastUpdated, setLastUpdated] = u_s(null);
   u_e(() => {
     if (!apiEnabled) return;
     let cancelled = false;
+    let inFlight = false;
     setStatus('loading');
-    // Small delay lets the debounced score sync land before we read.
-    const t = setTimeout(() => {
+    setLiveBoard(null);
+
+    function load() {
+      if (inFlight) return;
+      inFlight = true;
       window.DBLingoAPI
         .fetchLeaderboard(showingEvent ? { eventId, limit: 10 } : { pack, limit: 5 })
         .then((leaders) => {
+          inFlight = false;
           if (cancelled) return;
-          if (!leaders) { setStatus('error'); return; }
+          // A failed background refresh keeps the last good board.
+          if (!leaders) { setStatus(s => (s === 'ready' ? s : 'error')); return; }
           const myId = window.DBLingoAPI.getUserId();
           setLiveBoard(leaders.map((row) => ({
+            id: row.userId,
             name: row.name || 'Anonymous',
             xp: row.xp || 0,
             leaves: row.leaves || 0,
             me: row.userId === myId
           })));
           setStatus('ready');
+          setLastUpdated(new Date());
         });
-    }, 900);
-    return () => { cancelled = true; clearTimeout(t); };
+    }
+
+    // Small delay lets the debounced score sync land before the first read.
+    const first = setTimeout(load, 900);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') load();
+    }, LEADERBOARD_REFRESH_MS);
+    const onVisible = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      clearTimeout(first);
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [apiEnabled, pack, showingEvent, eventId, totalXp, leaves]);
 
   const board = status === 'stub' ? stubBoard : (liveBoard || []);
@@ -1126,6 +1194,12 @@ function LeaderboardScreen({ totalXp, leaves, name = 'You', pack, eventId, event
         : live
           ? 'Top DBLingo learners — live from the leaderboard service.'
           : 'Top five DBLingo learners this week. Resets every Monday.'}</p>
+      {live && lastUpdated && (
+        <div className="ml-lb-updated" aria-live="off">
+          <span className="ml-lb-updated__dot" aria-hidden="true" />
+          Live · auto-refreshes every {Math.round(LEADERBOARD_REFRESH_MS / 1000)}s · updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        </div>
+      )}
       <div className="ml-lb-list">
         {status === 'loading' && (
           <div className="ml-lb-row ml-lb-row--status"><div className="ml-lb-name">Loading leaderboard…</div></div>
@@ -1137,7 +1211,7 @@ function LeaderboardScreen({ totalXp, leaves, name = 'You', pack, eventId, event
           <div className="ml-lb-row ml-lb-row--status"><div className="ml-lb-name">No scores yet — be the first!</div></div>
         )}
         {(status === 'ready' || status === 'stub') && board.map((row, i) => (
-          <div key={(row.name || 'row') + i} className="ml-lb-row" data-rank={i + 1} data-me={!!row.me}>
+          <div key={row.id || ((row.name || 'row') + i)} className="ml-lb-row" data-rank={i + 1} data-me={!!row.me}>
             <div className="ml-lb-rank">#{i + 1}</div>
             <div className="ml-lb-name">{row.name}</div>
             <div className="ml-lb-leaves"><LeafIcon size={12} color="var(--lg-spring)" /> {row.leaves}</div>

@@ -15,6 +15,7 @@
 import { getPlayers } from './_db.js';
 import { handlePreflight, readJsonBody } from './_cors.js';
 import { upsertEventScore } from './_events.js';
+import { archiveIfDifferentPerson } from './_players.js';
 
 const PHONE_RE = /^\+?[0-9\s().-]+$/;
 
@@ -59,6 +60,10 @@ export default async function handler(req, res) {
   if (cleanedPhone) set.phone = cleanedPhone;
 
   try {
+    // Shared device, new participant on an old id: keep the previous person's
+    // score (archived under a new id) instead of overwriting it.
+    await archiveIfDifferentPerson(userId, { name: cleanName, phone: cleanedPhone });
+
     const players = await getPlayers();
     await players.updateOne(
       { userId },
@@ -69,9 +74,11 @@ export default async function handler(req, res) {
       { upsert: true }
     );
 
+    // Never echo the phone back: userIds are visible on public leaderboards,
+    // so returning it here would let anyone look up a player's number.
     const player = await players.findOne(
       { userId },
-      { projection: { _id: 0 } }
+      { projection: { _id: 0, phone: 0 } }
     );
 
     const joined = eventId

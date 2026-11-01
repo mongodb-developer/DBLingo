@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "validate:data-agent": "node scripts/validate-industry-data.mjs"
+    "validate:data-agent": "node scripts/validate-industry-data.mjs",
+    "sync:routes": "node scripts/sync-routes.mjs",
+    "check:routes": "node scripts/sync-routes.mjs --check"
   },
   "dependencies": {
     "@console-agent/agent": "^1.2.0"

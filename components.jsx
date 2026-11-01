@@ -273,8 +273,12 @@ function Feedback({ state, title, message, diff }) {
 }
 
 /* ---------- Celebrate overlay ---------- */
-function Celebrate({ visible, xp, leaves, onClose, perfect, final }) {
+function Celebrate({ visible, xp, leaves, onClose, perfect, final, penalty = 0, hints = 0, mistakes = 0 }) {
   if (!visible) return null;
+  const deductions = [
+    hints > 0 ? `${hints} hint${hints === 1 ? '' : 's'}` : null,
+    mistakes > 0 ? `${mistakes} mistake${mistakes === 1 ? '' : 's'}` : null
+  ].filter(Boolean).join(' · ');
   return (
     <>
       <Confetti on />
@@ -296,6 +300,9 @@ function Celebrate({ visible, xp, leaves, onClose, perfect, final }) {
           <div className="ml-celebrate__reward">
             +{xp} XP{perfect && <> · +{final ? 5 : 1} <LeafIcon size={14} color="currentColor" /></>}
           </div>
+          {penalty > 0 && (
+            <div className="ml-celebrate__penalty">−{penalty} XP for {deductions}</div>
+          )}
           <div style={{ marginTop: 22, display: 'flex', gap: 10, justifyContent: 'center' }}>
             <button className="ml-btn ml-btn--primary ml-btn--lg" onClick={onClose}>
               {final ? 'Take a bow' : 'Continue'}

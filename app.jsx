@@ -34,6 +34,27 @@ function readUrlParams() {
 }
 const URL_PARAMS = readUrlParams();
 
+/* ---------- Path routes ----------
+ * The leaderboard has its own URL (<root>/leaderboard/) so it can be
+ * refreshed or bookmarked — handy on a booth screen. Other views live at the
+ * app root. The root is derived from <base> (set by index.html when served
+ * from a route folder), so this works on GitHub Pages (/DBLingo/) and locally (/). */
+const APP_ROOT_PATH = (() => {
+  try { return new URL('.', document.baseURI).pathname; } catch (e) { return '/'; }
+})();
+const ROUTE_PATHS = { leaderboard: 'leaderboard/' };
+
+function viewFromPath(pathname) {
+  const rest = (pathname || '').startsWith(APP_ROOT_PATH) ? pathname.slice(APP_ROOT_PATH.length) : '';
+  return /^leaderboard(\/(index\.html)?)?$/.test(rest) ? 'leaderboard' : null;
+}
+
+function pathForView(viewName) {
+  return APP_ROOT_PATH + (ROUTE_PATHS[viewName] || '');
+}
+
+const INITIAL_ROUTE_VIEW = viewFromPath(window.location.pathname);
+
 /** Drop ?event= from the address bar once handled so a reload doesn't re-prompt. */
 function clearEventParam() {
   try {
@@ -72,6 +93,9 @@ function defaultProgress() {
   return {
     progress: {
     },
+    // Per-level hints/mistakes for the level in progress, keyed "world:level".
+    // Persisted so leaving and re-entering a level doesn't wipe penalties.
+    attempts: {},
     xp: 0,
     streak: 0,
     leaves: 0
@@ -215,7 +239,7 @@ function App() {
   }/*EDITMODE-END*/);
 
   const [state, setState] = useState_(loadProgress());
-  const [view, setView]   = useState_({ name: URL_PARAMS.admin ? 'admin' : 'home' });
+  const [view, setView]   = useState_({ name: URL_PARAMS.admin ? 'admin' : (INITIAL_ROUTE_VIEW || 'home') });
   const [celebrate, setCelebrate] = useState_(null); // { xp, leaf, perfect }
   const [skillBadgeWorld, setSkillBadgeWorld] = useState_(null);
   const [unlockAll, setUnlockAll] = useState_(false);
@@ -235,6 +259,29 @@ function App() {
 
   useEffect_(() => { saveProfile(profile); }, [profile]);
 
+  // Keep the address bar in sync with the view: /leaderboard/ for the
+  // leaderboard, the app root for everything else. Query (?event, ?admin) and
+  // hash are preserved. Back/Forward switch views via popstate.
+  const viewName = view.name;
+  useEffect_(() => {
+    if (viewName === 'admin') return; // admin stays on <root>?admin
+    const target = pathForView(viewName === 'leaderboard' ? 'leaderboard' : null);
+    if (window.location.pathname === target) return;
+    try {
+      window.history.pushState({ view: viewName }, '', target + window.location.search + window.location.hash);
+    } catch (e) { /* e.g. file:// — routing is a nicety, never fatal */ }
+  }, [viewName]);
+
+  useEffect_(() => {
+    const onPop = () => {
+      setView(viewFromPath(window.location.pathname) === 'leaderboard'
+        ? { name: 'leaderboard' }
+        : { name: 'home' });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   // When industry changes, swap active WORLDS/HINTS synchronously (useMemo runs during render)
   useMemo_(() => {
     const pack = window.DBLINGO_INDUSTRIES[industryId];
@@ -253,7 +300,7 @@ function App() {
     document.documentElement.style.setProperty('--lg-spring', tweaks.accent || '#00ED64');
   }, [tweaks.accent]);
 
-  function completeLevel({ worldId, levelId, xp, leaf, clean }) {
+  function completeLevel({ worldId, levelId, xp, leaf, clean, baseXp, hints = 0, mistakes = 0 }) {
     // Show Skill Badges when this completion is the one that finishes the world
     // (every level done), regardless of the order levels were cleared in.
     const world = window.WORLDS.find(w => w.id === worldId);
@@ -265,8 +312,11 @@ function App() {
     setState(prev => {
       const key = `${worldId}:${levelId}`;
       const previouslyDone = prev.progress[key]?.done;
+      // The attempt is settled — drop its hint/mistake counters.
+      const { [key]: _settled, ...attempts } = prev.attempts || {};
       const next = {
         ...prev,
+        attempts,
         progress: {
           ...prev.progress,
           [key]: { done: true, leaf: leaf || prev.progress[key]?.leaf }
@@ -277,12 +327,31 @@ function App() {
       };
       return next;
     });
+    const earned = wasDone ? 0 : xp;
     if (finishesWorld && skillBadges.length) {
-      setSkillBadgeWorld({ name: world.name, skillBadges, xp });
+      setSkillBadgeWorld({ name: world.name, skillBadges, xp: earned });
     } else {
-      setCelebrate({ xp, leaf, perfect: leaf });
-      setTimeout(() => setCelebrate(null), 1900);
+      setCelebrate({
+        xp: earned, leaf, perfect: leaf,
+        penalty: wasDone ? 0 : Math.max(0, (baseXp || xp) - xp),
+        hints, mistakes
+      });
+      setTimeout(() => setCelebrate(null), 2400);
     }
+  }
+
+  /** Count a hint reveal or a wrong check against the level in progress. */
+  function recordAttempt(worldId, levelId, field) {
+    const key = `${worldId}:${levelId}`;
+    setState(prev => {
+      const attempts = prev.attempts || {};
+      const current = attempts[key] || { hints: 0, mistakes: 0 };
+      return {
+        ...prev,
+        ...(field === 'mistakes' ? { streak: 0 } : {}),
+        attempts: { ...attempts, [key]: { ...current, [field]: (current[field] || 0) + 1 } }
+      };
+    });
   }
 
   function showSkillBadges(worldId) {
@@ -371,7 +440,9 @@ function App() {
     const packSwitch = event.pack && event.pack !== profile.selectedPackId;
     let nextProfile = { ...profile, eventId: event.eventId, eventName: event.name, eventPack: event.pack || null };
     if (packSwitch) {
-      // Switching assignment discards progress, same as "Change path".
+      // Switching assignment discards local progress. Keep the earned score on
+      // the leaderboard by continuing under a fresh participant id.
+      if (hasAnyProgress(state)) startNewParticipant();
       try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
       setState(defaultProgress());
       const pack = (window.DBLINGO_INDUSTRIES || {})[event.pack];
@@ -427,14 +498,41 @@ function App() {
     return () => clearTimeout(t);
   }, [state.xp, state.leaves, state.streak, industryId, profile.onboardingComplete, profile.eventId]);
 
+  /** Send the current participant's totals right away (bypassing the debounce),
+   *  e.g. just before the device switches to a new participant. */
+  function flushScore() {
+    if (!window.DBLingoAPI || !window.DBLingoAPI.apiEnabled() || !profile.onboardingComplete) return;
+    window.DBLingoAPI.submitScore({
+      xp: state.xp,
+      leaves: state.leaves,
+      streak: state.streak || 0,
+      pack: industryId,
+      name: profile.learnerName,
+      company: profile.company,
+      eventId: profile.eventId
+    });
+  }
+
+  /** Hand the device to a new participant: save the current score under the
+   *  current id, then switch to a fresh id so nothing earned is overwritten. */
+  function startNewParticipant() {
+    flushScore();
+    if (window.DBLingoAPI) window.DBLingoAPI.startNewUserSession();
+  }
+
   function changeAssignment() {
     if (hasAnyProgress(state)) {
-      const discard = window.confirm('Changing learner or assignment will discard all current progress and start fresh. Continue?');
+      const discard = window.confirm('Start a new participant or path? Your current score stays saved on the leaderboard, and this device starts fresh. Continue?');
       if (!discard) return;
+      startNewParticipant();
       try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
       setState(defaultProgress());
+      // Shared devices: don't pre-fill the next participant with the previous
+      // person's details (event membership is kept so the booth stays on it).
+      setProfile(prev => ({ ...prev, learnerName: '', company: '', phone: '', onboardingComplete: false }));
+    } else {
+      setProfile(prev => ({ ...prev, onboardingComplete: false }));
     }
-    setProfile(prev => ({ ...prev, onboardingComplete: false }));
     setView({ name: 'landing' });
   }
 
@@ -454,7 +552,9 @@ function App() {
                  worldId={view.worldId} levelId={view.levelId}
                  setView={setView}
                  onComplete={completeLevel}
-                 onMistake={resetStreak}
+                 attempt={(state.attempts || {})[`${view.worldId}:${view.levelId}`]}
+                 onHint={() => recordAttempt(view.worldId, view.levelId, 'hints')}
+                 onMistake={() => recordAttempt(view.worldId, view.levelId, 'mistakes')}
                  progress={state.progress} />;
       break;
     case 'challenge':
@@ -512,6 +612,9 @@ function App() {
         xp={celebrate?.xp ?? 0}
         leaves={state.leaves}
         perfect={!!celebrate?.perfect}
+        penalty={celebrate?.penalty || 0}
+        hints={celebrate?.hints || 0}
+        mistakes={celebrate?.mistakes || 0}
         final={!!celebrate?.final}
         onClose={() => setCelebrate(null)}
       />

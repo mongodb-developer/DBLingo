@@ -1920,6 +1920,46 @@ html.ml-dnd-active * { cursor: grabbing !important; user-select: none !important
   font-size: 26px; font-weight: 500; margin: 0 0 8px;
 }
 .ml-celebrate__sub { color: var(--ml-text-dim); margin: 0 0 18px; font-size: 14px; }
+.ml-celebrate__penalty { margin-top: 8px; font-size: 12.5px; color: #FFC010; }
+
+/* Live per-level reward (base XP minus hint / mistake penalties) */
+.ml-level-reward {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+  margin: -6px 0 16px;
+  font-size: 12.5px;
+  color: var(--ml-text-faint);
+}
+.ml-level-reward__xp {
+  font-family: var(--ml-font-mono);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--lg-spring);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0,237,100,0.08);
+  border: 1px solid var(--ml-border-green);
+}
+.ml-level-reward[data-penalized="true"] .ml-level-reward__xp {
+  color: #FFC010;
+  background: rgba(255,192,16,0.08);
+  border-color: rgba(255,192,16,0.4);
+}
+
+/* Leaderboard auto-refresh indicator */
+.ml-lb-updated {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin: -12px 0 16px;
+  font-size: 12px;
+  color: var(--ml-text-faint);
+}
+.ml-lb-updated__dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--lg-spring);
+  box-shadow: 0 0 6px var(--lg-spring);
+  animation: ml-lb-pulse 2s ease-in-out infinite;
+}
+@keyframes ml-lb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .ml-lb-updated__dot { animation: none; } }
 .ml-celebrate__reward {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 8px 14px;

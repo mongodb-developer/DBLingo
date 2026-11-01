@@ -13,19 +13,34 @@ const API_BASE = (window.DBLINGO_API_BASE || '').replace(/\/$/, '');
 
 const USER_ID_KEY = 'mongolingo.userId.v1';
 
+function newUserId() {
+  return (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'u_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+/** The current participant's id on this device. Each participant (session)
+ *  gets their own id — see startNewUserSession(). */
 function getUserId() {
   try {
     let id = localStorage.getItem(USER_ID_KEY);
     if (!id) {
-      id = (window.crypto && crypto.randomUUID)
-        ? crypto.randomUUID()
-        : 'u_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      id = newUserId();
       localStorage.setItem(USER_ID_KEY, id);
     }
     return id;
   } catch (e) {
     return 'u_anon';
   }
+}
+
+/** Start a fresh participant on this device. The previous participant's
+ *  player record and event scores stay on the server untouched, so a shared
+ *  device ("Change path" → next person) never overwrites an earned score. */
+function startNewUserSession() {
+  const id = newUserId();
+  try { localStorage.setItem(USER_ID_KEY, id); } catch (e) {}
+  return id;
 }
 
 function apiEnabled() {
@@ -136,9 +151,12 @@ function fetchEventLeadersAdmin(adminKey, eventId, limit = 25) {
   return adminFetch('/events?' + qs.toString(), adminKey, { method: 'GET', cache: 'no-store' });
 }
 
-/** Shareable invite link for an event, based on the current page URL. */
+/** Shareable invite link for an event. Always built from the app root (not
+ *  the current route), so a link copied on /leaderboard/ still lands
+ *  invitees on the join flow. */
 function getInviteLink(eventId) {
-  const url = new URL(window.location.href);
+  let url;
+  try { url = new URL('.', document.baseURI); } catch (e) { url = new URL(window.location.href); }
   url.search = '';
   url.hash = '';
   if (eventId) url.searchParams.set('event', eventId);
@@ -148,6 +166,7 @@ function getInviteLink(eventId) {
 window.DBLingoAPI = {
   apiEnabled,
   getUserId,
+  startNewUserSession,
   registerUser,
   submitScore,
   fetchLeaderboard,
