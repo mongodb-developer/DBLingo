@@ -1550,6 +1550,7 @@ html.ml-dnd-active * { cursor: grabbing !important; user-select: none !important
 .ml-lb-row[data-rank="3"] .ml-lb-rank { color: #D88E5A; }
 .ml-lb-name { font-weight: 600; }
 .ml-lb-leaves { font-size: 12px; color: var(--ml-text-dim); display: inline-flex; align-items: center; gap: 4px; }
+.ml-lb-streak { margin-right: 8px; color: #FFC010; }
 .ml-lb-xp { font-family: var(--ml-font-mono); font-weight: 600; color: var(--lg-spring); }
 
 .ml-invite {

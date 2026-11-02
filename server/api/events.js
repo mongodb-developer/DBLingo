@@ -29,6 +29,7 @@
 import { getEvents, getEventScores } from './_db.js';
 import { handlePreflight, readJsonBody } from './_cors.js';
 import { checkAdmin, cleanEventId, findEvent, publicEvent, slugify, parseQrDataUrl, EVENT_PROJECTION } from './_events.js';
+import { RANK_SORT } from './_ranking.js';
 
 function parseDate(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -62,7 +63,7 @@ async function handleAdminLeaders(req, res, id, limitParam) {
   const scores = await getEventScores();
   const leaders = await scores.aggregate([
     { $match: { eventId: event.eventId } },
-    { $sort: { xp: -1, updatedAt: 1 } },
+    { $sort: RANK_SORT },
     { $limit: limit },
     // players.userId is uniquely indexed, so each lookup is a single index hit.
     { $lookup: {
@@ -79,7 +80,7 @@ async function handleAdminLeaders(req, res, id, limitParam) {
       name: { $ifNull: ['$player.name', '$name'] },
       company: { $ifNull: ['$player.company', { $ifNull: ['$company', ''] }] },
       phone: { $ifNull: ['$player.phone', ''] },
-      xp: 1, leaves: 1, streak: 1, joinedAt: 1, updatedAt: 1
+      xp: 1, leaves: 1, streak: 1, scoreAt: 1, joinedAt: 1, updatedAt: 1
     } }
   ]).toArray();
 

@@ -9,6 +9,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { getEvents, getEventScores } from './_db.js';
 import { MAX_XP, MAX_LEAVES } from './_limits.js';
+import { aheadOf } from './_ranking.js';
 
 export const EVENT_ID_RE = /^[a-z0-9][a-z0-9-]{2,47}$/;
 
@@ -145,11 +146,17 @@ export async function upsertEventScore({ eventId, userId, xp, leaves, streak, na
     } },
     // 3) Event score = gain over baseline, never decreasing — and never
     //    above the honest per-player maximum (anti-abuse cap).
+    { $set: { _prevXp: '$xp' } },
     { $set: {
       ...set,
       xp: { $min: [MAX_XP, { $max: ['$xp', { $subtract: [xp, '$baselineXp'] }] }] },
       leaves: { $min: [MAX_LEAVES, { $max: ['$leaves', { $subtract: [leaves, '$baselineLeaves'] }] }] }
-    } }
+    } },
+    // 4) Tie-break timestamp: only moves when the event score goes up.
+    { $set: {
+      scoreAt: { $cond: [{ $gt: ['$xp', '$_prevXp'] }, now, { $ifNull: ['$scoreAt', now] }] }
+    } },
+    { $unset: '_prevXp' }
   ];
 
   const scores = await getEventScores();
@@ -163,7 +170,7 @@ export async function upsertEventScore({ eventId, userId, xp, leaves, streak, na
     await scores.updateOne(filter, pipeline, { upsert: true });
   }
 
-  const me = await scores.findOne(filter, { projection: { _id: 0, xp: 1, leaves: 1 } });
-  const ahead = await scores.countDocuments({ eventId: event.eventId, xp: { $gt: me?.xp ?? 0 } });
+  const me = await scores.findOne(filter, { projection: { _id: 0, xp: 1, leaves: 1, scoreAt: 1, streak: 1 } });
+  const ahead = await scores.countDocuments(aheadOf(me, { eventId: event.eventId }));
   return { eventId: event.eventId, xp: me?.xp ?? 0, leaves: me?.leaves ?? 0, rank: ahead + 1 };
 }

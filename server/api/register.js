@@ -69,7 +69,7 @@ export default async function handler(req, res) {
       { userId },
       {
         $set: set,
-        $setOnInsert: { userId, xp: 0, leaves: 0, streak: 0, createdAt: now }
+        $setOnInsert: { userId, xp: 0, leaves: 0, streak: 0, createdAt: now, scoreAt: now }
       },
       { upsert: true }
     );

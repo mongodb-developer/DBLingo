@@ -63,6 +63,9 @@ export function getPlayers() {
   return getCollection('players', async (players) => {
     await players.createIndex({ userId: 1 }, { unique: true });
     await players.createIndex({ pack: 1, xp: -1 });
+    // Leaderboard order: xp ↓, reached-score time ↑, streak ↓ (see _ranking.js)
+    await players.createIndex({ xp: -1, scoreAt: 1, streak: -1 });
+    await players.createIndex({ pack: 1, xp: -1, scoreAt: 1, streak: -1 });
   });
 }
 
@@ -78,5 +81,7 @@ export function getEventScores() {
   return getCollection('event_scores', async (scores) => {
     await scores.createIndex({ eventId: 1, userId: 1 }, { unique: true });
     await scores.createIndex({ eventId: 1, xp: -1, updatedAt: 1 });
+    // Event leaderboard order (see _ranking.js)
+    await scores.createIndex({ eventId: 1, xp: -1, scoreAt: 1, streak: -1 });
   });
 }

@@ -1151,6 +1151,7 @@ function LeaderboardScreen({ totalXp, leaves, name = 'You', pack, eventId, event
             name: row.name || 'Anonymous',
             xp: row.xp || 0,
             leaves: row.leaves || 0,
+            streak: row.streak || 0,
             me: row.userId === myId
           })));
           setStatus('ready');
@@ -1192,9 +1193,9 @@ function LeaderboardScreen({ totalXp, leaves, name = 'You', pack, eventId, event
     <>
       <h2>{showingEvent ? (eventName || 'Event leaderboard') : 'Weekly leaderboard'}</h2>
       <p>{showingEvent
-        ? 'Event standings — ranked by XP earned since each player joined.'
+        ? 'Event standings — ranked by XP earned since joining, then who got there first, then streak.'
         : live
-          ? 'Top DBLingo learners — live from the leaderboard service.'
+          ? 'Top DBLingo learners — ranked by XP, then who got there first, then streak.'
           : 'Top five DBLingo learners this week. Resets every Monday.'}</p>
       {live && lastUpdated && (
         <div className="ml-lb-updated" aria-live="off">
@@ -1216,7 +1217,10 @@ function LeaderboardScreen({ totalXp, leaves, name = 'You', pack, eventId, event
           <div key={row.id || ((row.name || 'row') + i)} className="ml-lb-row" data-rank={i + 1} data-me={!!row.me}>
             <div className="ml-lb-rank">#{i + 1}</div>
             <div className="ml-lb-name">{row.name}</div>
-            <div className="ml-lb-leaves"><LeafIcon size={12} color="var(--lg-spring)" /> {row.leaves}</div>
+            <div className="ml-lb-leaves">
+              {row.streak > 0 && <span className="ml-lb-streak" title={`${row.streak} in a row`}>🔥 {row.streak}</span>}
+              <LeafIcon size={12} color="var(--lg-spring)" /> {row.leaves}
+            </div>
             <div className="ml-lb-xp">{(row.xp || 0).toLocaleString()} XP</div>
           </div>
         ))}
@@ -1366,10 +1370,18 @@ function csvCell(value) {
   return '"' + safe.replace(/"/g, '""') + '"';
 }
 
+function fmtTime(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
 function downloadLeadersCsv(event, leaders) {
-  const header = ['Rank', 'Name', 'Company', 'Phone', 'Event XP', 'Leaves', 'Joined'];
+  const header = ['Rank', 'Name', 'Company', 'Phone', 'Event XP', 'Reached score at', 'Streak', 'Leaves', 'Joined'];
   const rows = leaders.map(p => [
-    p.rank, p.name, p.company, p.phone, p.xp, p.leaves,
+    p.rank, p.name, p.company, p.phone, p.xp,
+    p.scoreAt ? new Date(p.scoreAt).toISOString() : '',
+    p.streak || 0, p.leaves,
     p.joinedAt ? new Date(p.joinedAt).toISOString() : ''
   ]);
   const csv = [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
@@ -1448,7 +1460,7 @@ function AdminEventLeaders({ adminKey, event }) {
             <div className="ml-admin__table-wrap">
               <table className="ml-admin__table">
                 <thead>
-                  <tr><th>#</th><th>Name</th><th>Company</th><th>Phone</th><th className="ml-admin__num">Event XP</th></tr>
+                  <tr><th>#</th><th>Name</th><th>Company</th><th>Phone</th><th className="ml-admin__num">Event XP</th><th>Reached at</th><th className="ml-admin__num">Streak</th></tr>
                 </thead>
                 <tbody>
                   {leaders.map(p => (
@@ -1460,6 +1472,8 @@ function AdminEventLeaders({ adminKey, event }) {
                         ? <a href={`tel:${p.phone.replace(/[^\d+]/g, '')}`}>{p.phone}</a>
                         : <span className="ml-admin__muted">not provided</span>}</td>
                       <td className="ml-admin__num">{(p.xp || 0).toLocaleString()}</td>
+                      <td>{fmtTime(p.scoreAt)}</td>
+                      <td className="ml-admin__num">{p.streak || 0}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -2,9 +2,12 @@
  * /api/leaderboard
  *
  * GET  ?pack=general&limit=10
- *   -> { ok, leaders: [{ userId, name, pack, xp, leaves, streak, rank }] }
+ *   -> { ok, leaders: [{ userId, name, pack, xp, leaves, streak, scoreAt, rank }] }
  * GET  ?event=<eventId>&limit=10
  *   -> { ok, event, leaders: [...] }   ranked by XP earned during the event
+ *
+ * Ranking (both): XP ↓, then who reached that XP first (scoreAt ↑), then
+ * current streak ↓ — see _ranking.js.
  *
  * POST { userId, xp, leaves?, streak?, eventId? }
  *   -> updates a player's score (latest wins) and returns their rank.
@@ -19,6 +22,7 @@ import { handlePreflight, readJsonBody } from './_cors.js';
 import { findEvent, publicEvent, upsertEventScore } from './_events.js';
 import { archiveIfDifferentPerson } from './_players.js';
 import { limitScore } from './_limits.js';
+import { RANK_SORT, aheadOf } from './_ranking.js';
 
 function toInt(value, fallback = 0) {
   const n = Number(value);
@@ -33,9 +37,9 @@ async function handleEventGet(res, eventId, limit) {
   const leaders = await scores
     .find(
       { eventId: event.eventId },
-      { projection: { _id: 0, userId: 1, name: 1, xp: 1, leaves: 1, streak: 1 } }
+      { projection: { _id: 0, userId: 1, name: 1, xp: 1, leaves: 1, streak: 1, scoreAt: 1 } }
     )
-    .sort({ xp: -1, updatedAt: 1 })
+    .sort(RANK_SORT)
     .limit(limit)
     .toArray();
 
@@ -55,8 +59,8 @@ async function handleGet(req, res) {
 
   const players = await getPlayers();
   const leaders = await players
-    .find(filter, { projection: { _id: 0, company: 0, phone: 0 } })
-    .sort({ xp: -1, updatedAt: 1 })
+    .find(filter, { projection: { _id: 0, company: 0, phone: 0, paceAt: 0 } })
+    .sort(RANK_SORT)
     .limit(limit)
     .toArray();
 
@@ -90,7 +94,7 @@ async function handlePost(req, res) {
   const players = await getPlayers();
   // Anti-abuse: clamp the claimed totals to the honest maximum and to how
   // fast a person can actually play since the last accepted update.
-  const before = await players.findOne({ userId }, { projection: { _id: 0, xp: 1, leaves: 1, paceAt: 1 } });
+  const before = await players.findOne({ userId }, { projection: { _id: 0, xp: 1, leaves: 1, paceAt: 1, scoreAt: 1 } });
   const allowed = limitScore(before, max, now);
   if (allowed.limited) {
     console.warn(`[dblingo] score limited for ${userId}: claimed xp=${max.xp} leaves=${max.leaves} -> ${allowed.xp}/${allowed.leaves}`);
@@ -98,6 +102,8 @@ async function handlePost(req, res) {
   max.xp = allowed.xp;
   max.leaves = allowed.leaves;
   set.paceAt = allowed.paceAt;
+  // Tie-break: remember when the player first reached their current score.
+  if (!before || !before.scoreAt || allowed.xp > (before.xp || 0)) set.scoreAt = now;
 
   await players.updateOne(
     { userId },
@@ -105,12 +111,9 @@ async function handlePost(req, res) {
     { upsert: true }
   );
 
-  const me = await players.findOne({ userId }, { projection: { _id: 0, phone: 0 } });
-  // Rank = number of players with strictly higher xp, +1.
-  const ahead = await players.countDocuments({
-    ...(me?.pack ? { pack: me.pack } : {}),
-    xp: { $gt: me?.xp ?? 0 }
-  });
+  const me = await players.findOne({ userId }, { projection: { _id: 0, phone: 0, paceAt: 0 } });
+  // Rank = number of players ranked strictly ahead (same order as the board), +1.
+  const ahead = await players.countDocuments(aheadOf(me, me?.pack ? { pack: me.pack } : {}));
 
   // Use the stored (never-decreasing) totals for the event score too.
   const event = eventId

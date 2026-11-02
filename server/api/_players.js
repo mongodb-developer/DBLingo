@@ -49,7 +49,7 @@ export async function archiveIfDifferentPerson(userId, incoming) {
 
   await players.updateOne(
     { userId },
-    { $set: { xp: 0, leaves: 0, streak: 0, createdAt: now, updatedAt: now }, $unset: { phone: '' } }
+    { $set: { xp: 0, leaves: 0, streak: 0, createdAt: now, updatedAt: now, scoreAt: now }, $unset: { phone: '', paceAt: '' } }
   );
   console.log(`[dblingo] archived ${userId} -> ${archivedId} (new participant on shared device)`);
   return archivedId;
