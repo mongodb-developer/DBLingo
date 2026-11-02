@@ -69,11 +69,11 @@ async function registerUser({ name, company, phone, pack, eventId }) {
   });
 }
 
-async function submitScore({ xp, leaves, streak, pack, name, company, eventId }) {
+async function submitScore({ xp, leaves, streak, bestStreak, pack, name, company, eventId }) {
   if (!apiEnabled()) return null;
   return apiFetch('/leaderboard', {
     method: 'POST',
-    body: JSON.stringify({ userId: getUserId(), xp, leaves, streak, pack, name, company, eventId: eventId || undefined })
+    body: JSON.stringify({ userId: getUserId(), xp, leaves, streak, bestStreak, pack, name, company, eventId: eventId || undefined })
   });
 }
 

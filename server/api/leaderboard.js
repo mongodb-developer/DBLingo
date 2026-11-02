@@ -6,8 +6,8 @@
  * GET  ?event=<eventId>&limit=10
  *   -> { ok, event, leaders: [...] }   ranked by XP earned during the event
  *
- * Ranking (both): XP ↓, then who reached that XP first (scoreAt ↑), then
- * current streak ↓ — see _ranking.js.
+ * Ranking (both): XP ↓, then best streak ever ↓, then who reached that XP
+ * first (scoreAt ↑) — see _ranking.js.
  *
  * POST { userId, xp, leaves?, streak?, eventId? }
  *   -> updates a player's score (latest wins) and returns their rank.
@@ -21,7 +21,7 @@ import { getPlayers, getEventScores } from './_db.js';
 import { handlePreflight, readJsonBody } from './_cors.js';
 import { findEvent, publicEvent, upsertEventScore } from './_events.js';
 import { archiveIfDifferentPerson } from './_players.js';
-import { limitScore } from './_limits.js';
+import { limitScore, MAX_STREAK } from './_limits.js';
 import { RANK_SORT, aheadOf } from './_ranking.js';
 
 function toInt(value, fallback = 0) {
@@ -37,7 +37,7 @@ async function handleEventGet(res, eventId, limit) {
   const leaders = await scores
     .find(
       { eventId: event.eventId },
-      { projection: { _id: 0, userId: 1, name: 1, xp: 1, leaves: 1, streak: 1, scoreAt: 1 } }
+      { projection: { _id: 0, userId: 1, name: 1, xp: 1, leaves: 1, streak: 1, bestStreak: 1, scoreAt: 1 } }
     )
     .sort(RANK_SORT)
     .limit(limit)
@@ -69,7 +69,7 @@ async function handleGet(req, res) {
 }
 
 async function handlePost(req, res) {
-  const { userId, xp, leaves, streak, name, company, pack, eventId } = readJsonBody(req);
+  const { userId, xp, leaves, streak, bestStreak, name, company, pack, eventId } = readJsonBody(req);
 
   if (!userId || typeof userId !== 'string') {
     return res.status(400).json({ error: 'userId is required' });
@@ -78,8 +78,12 @@ async function handlePost(req, res) {
   const now = new Date();
   // Earned totals only ever go up: a device that resets local progress
   // (e.g. "Change path" on an older frontend) can't wipe a saved score.
-  const set = { streak: toInt(streak), updatedAt: now };
-  const max = { xp: toInt(xp), leaves: toInt(leaves) };
+  const cleanStreak = Math.min(toInt(streak), MAX_STREAK);
+  // Old frontends only send the current streak; new ones also send the best.
+  const cleanBest = Math.min(Math.max(toInt(bestStreak), cleanStreak), MAX_STREAK);
+  const set = { streak: cleanStreak, updatedAt: now };
+  // bestStreak = longest clean run ever reached; ranks ties (see _ranking.js).
+  const max = { xp: toInt(xp), leaves: toInt(leaves), bestStreak: cleanBest };
   if (typeof name === 'string') set.name = name.trim().slice(0, 80);
   if (typeof company === 'string') set.company = company.trim().slice(0, 120);
   if (typeof pack === 'string') set.pack = pack.trim().slice(0, 60);
@@ -120,6 +124,7 @@ async function handlePost(req, res) {
     ? await upsertEventScore({
       eventId, userId,
       xp: me?.xp ?? max.xp, leaves: me?.leaves ?? max.leaves, streak: set.streak,
+      bestStreak: cleanBest,
       name: me?.name, company: me?.company
     })
     : null;

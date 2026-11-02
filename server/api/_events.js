@@ -8,7 +8,7 @@
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { getEvents, getEventScores } from './_db.js';
-import { MAX_XP, MAX_LEAVES } from './_limits.js';
+import { MAX_XP, MAX_LEAVES, MAX_STREAK } from './_limits.js';
 import { aheadOf } from './_ranking.js';
 
 export const EVENT_ID_RE = /^[a-z0-9][a-z0-9-]{2,47}$/;
@@ -118,11 +118,12 @@ export function checkAdmin(req) {
  * Only applied while the event is live. Returns the stored event score
  * (event xp/leaves) plus rank, or null if the event is missing / not live.
  */
-export async function upsertEventScore({ eventId, userId, xp, leaves, streak, name, company }) {
+export async function upsertEventScore({ eventId, userId, xp, leaves, streak, bestStreak, name, company }) {
   const event = await findEvent(eventId);
   if (!event || eventStatus(event) !== 'live') return null;
 
   const now = new Date();
+  const best = Math.min(MAX_STREAK, Math.max(0, Number(bestStreak ?? streak) || 0));
   const set = { totalXp: xp, streak, updatedAt: now };
   // User-supplied strings are wrapped in $literal so values like "$foo"
   // are never interpreted as field paths inside the pipeline update.
@@ -153,8 +154,10 @@ export async function upsertEventScore({ eventId, userId, xp, leaves, streak, na
       leaves: { $min: [MAX_LEAVES, { $max: ['$leaves', { $subtract: [leaves, '$baselineLeaves'] }] }] }
     } },
     // 4) Tie-break timestamp: only moves when the event score goes up.
+    //    Best streak during the event only ever goes up.
     { $set: {
-      scoreAt: { $cond: [{ $gt: ['$xp', '$_prevXp'] }, now, { $ifNull: ['$scoreAt', now] }] }
+      scoreAt: { $cond: [{ $gt: ['$xp', '$_prevXp'] }, now, { $ifNull: ['$scoreAt', now] }] },
+      bestStreak: { $max: [{ $ifNull: ['$bestStreak', 0] }, best] }
     } },
     { $unset: '_prevXp' }
   ];
@@ -170,7 +173,7 @@ export async function upsertEventScore({ eventId, userId, xp, leaves, streak, na
     await scores.updateOne(filter, pipeline, { upsert: true });
   }
 
-  const me = await scores.findOne(filter, { projection: { _id: 0, xp: 1, leaves: 1, scoreAt: 1, streak: 1 } });
+  const me = await scores.findOne(filter, { projection: { _id: 0, xp: 1, leaves: 1, scoreAt: 1, bestStreak: 1 } });
   const ahead = await scores.countDocuments(aheadOf(me, { eventId: event.eventId }));
   return { eventId: event.eventId, xp: me?.xp ?? 0, leaves: me?.leaves ?? 0, rank: ahead + 1 };
 }

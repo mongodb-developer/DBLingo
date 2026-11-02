@@ -14,6 +14,8 @@
  */
 export const MAX_XP = Number(process.env.MAX_XP) || 2185;
 export const MAX_LEAVES = Number(process.env.MAX_LEAVES) || 34;
+// A streak counts first-time clean level clears: 6 worlds × 4 levels.
+export const MAX_STREAK = Number(process.env.MAX_STREAK) || 24;
 
 // Fastest plausible pace: a challenge win (~260 XP) takes ≥ ~30 s of play,
 // a level (25–30 XP) ≥ ~10 s. This is a token bucket keyed on a stored

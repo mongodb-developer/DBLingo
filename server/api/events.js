@@ -80,7 +80,7 @@ async function handleAdminLeaders(req, res, id, limitParam) {
       name: { $ifNull: ['$player.name', '$name'] },
       company: { $ifNull: ['$player.company', { $ifNull: ['$company', ''] }] },
       phone: { $ifNull: ['$player.phone', ''] },
-      xp: 1, leaves: 1, streak: 1, scoreAt: 1, joinedAt: 1, updatedAt: 1
+      xp: 1, leaves: 1, streak: 1, bestStreak: 1, scoreAt: 1, joinedAt: 1, updatedAt: 1
     } }
   ]).toArray();
 

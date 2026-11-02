@@ -314,6 +314,7 @@ function App() {
       const previouslyDone = prev.progress[key]?.done;
       // The attempt is settled — drop its hint/mistake counters.
       const { [key]: _settled, ...attempts } = prev.attempts || {};
+      const nextStreak = clean && !previouslyDone ? (prev.streak || 0) + 1 : prev.streak || 0;
       const next = {
         ...prev,
         attempts,
@@ -322,7 +323,9 @@ function App() {
           [key]: { done: true, leaf: leaf || prev.progress[key]?.leaf }
         },
         xp:     prev.xp     + (previouslyDone ? 0 : xp),
-        streak: clean && !previouslyDone ? (prev.streak || 0) + 1 : prev.streak || 0,
+        streak: nextStreak,
+        // Longest clean run ever — ranks ties on the leaderboard.
+        bestStreak: Math.max(prev.bestStreak || 0, nextStreak),
         leaves: prev.leaves + (leaf && !prev.progress[key]?.leaf ? 1 : 0)
       };
       return next;
@@ -502,6 +505,7 @@ function App() {
         xp: state.xp,
         leaves: state.leaves,
         streak: state.streak || 0,
+        bestStreak: Math.max(state.bestStreak || 0, state.streak || 0),
         pack: industryId,
         name: profile.learnerName,
         company: profile.company,
@@ -509,7 +513,7 @@ function App() {
       });
     }, 800);
     return () => clearTimeout(t);
-  }, [state.xp, state.leaves, state.streak, industryId, profile.onboardingComplete, profile.eventId]);
+  }, [state.xp, state.leaves, state.streak, state.bestStreak, industryId, profile.onboardingComplete, profile.eventId]);
 
   /** Send the current participant's totals right away (bypassing the debounce),
    *  e.g. just before the device switches to a new participant. */
@@ -519,6 +523,7 @@ function App() {
       xp: state.xp,
       leaves: state.leaves,
       streak: state.streak || 0,
+      bestStreak: Math.max(state.bestStreak || 0, state.streak || 0),
       pack: industryId,
       name: profile.learnerName,
       company: profile.company,
