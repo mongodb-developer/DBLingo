@@ -18,6 +18,7 @@ import { getPlayers, getEventScores } from './_db.js';
 import { handlePreflight, readJsonBody } from './_cors.js';
 import { findEvent, publicEvent, upsertEventScore } from './_events.js';
 import { archiveIfDifferentPerson } from './_players.js';
+import { limitScore } from './_limits.js';
 
 function toInt(value, fallback = 0) {
   const n = Number(value);
@@ -87,6 +88,17 @@ async function handlePost(req, res) {
   if (set.name) await archiveIfDifferentPerson(userId, { name: set.name });
 
   const players = await getPlayers();
+  // Anti-abuse: clamp the claimed totals to the honest maximum and to how
+  // fast a person can actually play since the last accepted update.
+  const before = await players.findOne({ userId }, { projection: { _id: 0, xp: 1, leaves: 1, paceAt: 1 } });
+  const allowed = limitScore(before, max, now);
+  if (allowed.limited) {
+    console.warn(`[dblingo] score limited for ${userId}: claimed xp=${max.xp} leaves=${max.leaves} -> ${allowed.xp}/${allowed.leaves}`);
+  }
+  max.xp = allowed.xp;
+  max.leaves = allowed.leaves;
+  set.paceAt = allowed.paceAt;
+
   await players.updateOne(
     { userId },
     { $set: set, $max: max, $setOnInsert: setOnInsert },

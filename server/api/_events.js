@@ -8,6 +8,7 @@
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { getEvents, getEventScores } from './_db.js';
+import { MAX_XP, MAX_LEAVES } from './_limits.js';
 
 export const EVENT_ID_RE = /^[a-z0-9][a-z0-9-]{2,47}$/;
 
@@ -142,11 +143,12 @@ export async function upsertEventScore({ eventId, userId, xp, leaves, streak, na
       baselineXp: { $min: ['$baselineXp', xp] },
       baselineLeaves: { $min: ['$baselineLeaves', leaves] }
     } },
-    // 3) Event score = gain over baseline, never decreasing.
+    // 3) Event score = gain over baseline, never decreasing — and never
+    //    above the honest per-player maximum (anti-abuse cap).
     { $set: {
       ...set,
-      xp: { $max: ['$xp', { $subtract: [xp, '$baselineXp'] }] },
-      leaves: { $max: ['$leaves', { $subtract: [leaves, '$baselineLeaves'] }] }
+      xp: { $min: [MAX_XP, { $max: ['$xp', { $subtract: [xp, '$baselineXp'] }] }] },
+      leaves: { $min: [MAX_LEAVES, { $max: ['$leaves', { $subtract: [leaves, '$baselineLeaves'] }] }] }
     } }
   ];
 
