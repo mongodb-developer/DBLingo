@@ -1120,7 +1120,9 @@ function LeaderboardScreen({ totalXp, leaves, name = 'You', pack, eventId, event
   const [liveBoard, setLiveBoard] = u_s(null);
   const [status, setStatus] = u_s(apiEnabled ? 'loading' : 'stub'); // loading | ready | error | stub
 
-  u_e(() => { if (!hasEvent) setScope('global'); }, [hasEvent]);
+  // Follow the learner's event: when it changes (e.g. an invite link switched
+  // events while this screen was open) jump to that event's tab.
+  u_e(() => { setScope(hasEvent ? 'event' : 'global'); }, [hasEvent, eventId]);
 
   // Auto-refresh: re-fetch every LEADERBOARD_REFRESH_MS while the tab is
   // visible (and immediately when it becomes visible again). Refreshes are

@@ -430,13 +430,23 @@ function App() {
         setView({ name: 'landing' });
         return;
       }
+      // Onboarded learner on a different (or no) event: the invite link is
+      // authoritative. Switch straight away unless the event pins a different
+      // assignment — that would reset progress, so it still needs a confirm.
+      const needsPackSwitch = event.pack && event.pack !== current.selectedPackId;
+      if (!needsPackSwitch) {
+        joinEventRef.current(event, { navigate: false });
+        return;
+      }
       setInviteDialog({ kind: 'join', event });
     });
     return () => { cancelled = true; };
   }, []);
 
-  /** Join an event as an already-onboarded learner. */
-  function joinEvent(event) {
+  /** Join an event as an already-onboarded learner. `navigate` opens the
+   *  leaderboard afterwards (default); invite links keep the current view so
+   *  /leaderboard/?event=<id> and <root>?event=<id> both land where they point. */
+  function joinEvent(event, { navigate = true } = {}) {
     const packSwitch = event.pack && event.pack !== profile.selectedPackId;
     let nextProfile = { ...profile, eventId: event.eventId, eventName: event.name, eventPack: event.pack || null };
     if (packSwitch) {
@@ -457,7 +467,7 @@ function App() {
     setProfile(nextProfile);
     setInviteDialog(null);
     clearEventParam();
-    setView({ name: 'leaderboard' });
+    if (navigate) setView({ name: 'leaderboard' });
     if (window.DBLingoAPI) {
       window.DBLingoAPI.registerUser({
         name: nextProfile.learnerName,
@@ -468,6 +478,9 @@ function App() {
       });
     }
   }
+  // The invite effect runs once on mount; a ref lets it call the latest joinEvent.
+  const joinEventRef = React.useRef(joinEvent);
+  joinEventRef.current = joinEvent;
 
   function dismissInvite() {
     setInviteDialog(null);
