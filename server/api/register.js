@@ -1,33 +1,30 @@
 /**
  * POST /api/register
- * Body: { userId, name, company?, phone?, pack?, eventId? }
+ * Body: { userId, name, company?, email?, pack?, eventId? }
  *
  * Upserts a player record. Called when a learner starts an assignment.
  * If eventId is given (and the event is live), also joins that event's
  * leaderboard, snapshotting the player's current XP as the event baseline.
  * Returns the stored player document (without _id), plus `event` when joined.
  *
- * `phone` is validated when present (7–15 digits, optional leading "+",
- * spaces / dashes / dots / parentheses allowed) and stored as entered
- * (trimmed). It's optional here so older cached frontends keep working;
- * the onboarding form requires it. Phone is never exposed on leaderboards.
+ * `email` is validated when present (simple name@domain.tld shape) and
+ * stored trimmed and lower-cased. It's optional here so older cached frontends keep working;
+ * the onboarding form requires it. Email is never exposed on leaderboards.
  */
 import { getPlayers } from './_db.js';
 import { handlePreflight, readJsonBody } from './_cors.js';
 import { upsertEventScore } from './_events.js';
 import { archiveIfDifferentPerson } from './_players.js';
 
-const PHONE_RE = /^\+?[0-9\s().-]+$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-/** Returns the trimmed phone, '' if absent, or null if invalid. */
-function cleanPhone(value) {
+/** Returns the trimmed, lower-cased email, '' if absent, or null if invalid. */
+function cleanEmail(value) {
   if (value === undefined || value === null || value === '') return '';
   if (typeof value !== 'string') return null;
-  const v = value.trim();
+  const v = value.trim().toLowerCase();
   if (!v) return '';
-  if (v.length > 24 || !PHONE_RE.test(v)) return null;
-  const digits = v.replace(/\D/g, '').length;
-  return digits >= 7 && digits <= 15 ? v : null;
+  return v.length <= 254 && EMAIL_RE.test(v) ? v : null;
 }
 
 export default async function handler(req, res) {
@@ -37,7 +34,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { userId, name, company, phone, pack, eventId } = readJsonBody(req);
+  const { userId, name, company, email, pack, eventId } = readJsonBody(req);
 
   if (!userId || typeof userId !== 'string') {
     return res.status(400).json({ error: 'userId is required' });
@@ -45,9 +42,9 @@ export default async function handler(req, res) {
   if (!name || typeof name !== 'string') {
     return res.status(400).json({ error: 'name is required' });
   }
-  const cleanedPhone = cleanPhone(phone);
-  if (cleanedPhone === null) {
-    return res.status(400).json({ error: 'phone is invalid' });
+  const cleanedEmail = cleanEmail(email);
+  if (cleanedEmail === null) {
+    return res.status(400).json({ error: 'email is invalid' });
   }
 
   const now = new Date();
@@ -56,13 +53,13 @@ export default async function handler(req, res) {
   const cleanPack = String(pack || 'general').trim().slice(0, 60);
 
   const set = { name: cleanName, company: cleanCompany, pack: cleanPack, updatedAt: now };
-  // Only overwrite a stored phone when a new one is supplied.
-  if (cleanedPhone) set.phone = cleanedPhone;
+  // Only overwrite a stored email when a new one is supplied.
+  if (cleanedEmail) set.email = cleanedEmail;
 
   try {
     // Shared device, new participant on an old id: keep the previous person's
     // score (archived under a new id) instead of overwriting it.
-    await archiveIfDifferentPerson(userId, { name: cleanName, phone: cleanedPhone });
+    await archiveIfDifferentPerson(userId, { name: cleanName, email: cleanedEmail });
 
     const players = await getPlayers();
     await players.updateOne(
@@ -74,11 +71,11 @@ export default async function handler(req, res) {
       { upsert: true }
     );
 
-    // Never echo the phone back: userIds are visible on public leaderboards,
+    // Never echo the email back: userIds are visible on public leaderboards,
     // so returning it here would let anyone look up a player's number.
     const player = await players.findOne(
       { userId },
-      { projection: { _id: 0, phone: 0 } }
+      { projection: { _id: 0, email: 0 } }
     );
 
     const joined = eventId

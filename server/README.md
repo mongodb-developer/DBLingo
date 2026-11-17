@@ -13,13 +13,13 @@ works exactly as before with its built-in stub leaderboard.
 | Method | Path                | Body / Query                                  | Description |
 |--------|---------------------|-----------------------------------------------|-------------|
 | GET    | `/api/health`       | —                                             | Health + DB ping |
-| POST   | `/api/register`     | `{ userId, name, company?, phone?, pack?, eventId? }` | Upsert a player (and join an event) |
+| POST   | `/api/register`     | `{ userId, name, company?, email?, pack?, eventId? }` | Upsert a player (and join an event) |
 | POST   | `/api/leaderboard`  | `{ userId, xp, leaves?, streak?, pack?, eventId? }` | Update score, returns rank (+ event rank) |
 | GET    | `/api/leaderboard`  | `?pack=general&limit=10`                      | Top players (latest XP wins) |
 | GET    | `/api/leaderboard`  | `?event=<eventId>&limit=10`                   | Event leaderboard |
 | GET    | `/api/events`       | `?id=<eventId>`                               | Resolve an invite link (public) |
 | GET    | `/api/events`       | — (admin)                                     | List events |
-| GET    | `/api/events`       | `?id=<eventId>&leaders=1&limit=25` (admin)    | Event top players **with phone** (admin page only) |
+| GET    | `/api/events`       | `?id=<eventId>&leaders=1&limit=25` (admin)    | Event top players **with email** (admin page only) |
 | GET    | `/api/events`       | `?id=<eventId>&qr=1&v=<qrVersion>`            | Event QR image (public; 404 → frontend shows the default QR) |
 | PATCH  | `/api/events`       | `?id=<eventId>` `{ qrImage: <data URL> \| null }` (admin) | Set / replace / remove an event's QR image |
 | POST   | `/api/events`       | `{ name, eventId?, pack?, startsAt?, endsAt? }` (admin) | Create an event |
@@ -48,8 +48,8 @@ https://mongodb-developer.github.io/DBLingo/?event=<eventId>
 ### Data model
 
 ```js
-// players — global record, one per browser (phone is private: never returned by /api/leaderboard)
-{ userId, name, company, phone, pack, xp, leaves, streak, createdAt, updatedAt }
+// players — global record, one per browser (email is private: never returned by /api/leaderboard)
+{ userId, name, company, email, pack, xp, leaves, streak, createdAt, updatedAt }
 // events — admin-created (qr is optional; without it the default QR asset is shown)
 { eventId, name, pack, startsAt, endsAt, createdAt, qr?: { data: Binary, contentType, updatedAt } }
 // event_scores — one per (eventId, userId)
@@ -85,7 +85,7 @@ curl http://localhost:3000/api/health
 
 curl -X POST http://localhost:3000/api/register \
   -H 'Content-Type: application/json' \
-  -d '{"userId":"u1","name":"Ada Lovelace","company":"Acme","phone":"+1 555 123 4567","pack":"general"}'
+  -d '{"userId":"u1","name":"Ada Lovelace","company":"Acme","email":"ada@acme.com","pack":"general"}'
 
 curl -X POST http://localhost:3000/api/leaderboard \
   -H 'Content-Type: application/json' \

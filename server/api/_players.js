@@ -12,7 +12,6 @@
 import { getPlayers, getEventScores } from './_db.js';
 
 const norm = (v) => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
-const digits = (v) => String(v || '').replace(/\D/g, '');
 
 /** True when `incoming` clearly belongs to someone other than `existing`. */
 export function isDifferentPerson(existing, incoming) {
@@ -20,14 +19,14 @@ export function isDifferentPerson(existing, incoming) {
   const nameA = norm(existing.name);
   const nameB = norm(incoming.name);
   if (nameA && nameB && nameA !== 'anonymous' && nameA !== nameB) return true;
-  const phoneA = digits(existing.phone);
-  const phoneB = digits(incoming.phone);
-  if (phoneA && phoneB && phoneA !== phoneB) return true;
+  const emailA = norm(existing.email);
+  const emailB = norm(incoming.email);
+  if (emailA && emailB && emailA !== emailB) return true;
   return false;
 }
 
 /**
- * If `userId` already has progress and `incoming` ({ name, phone? }) is a
+ * If `userId` already has progress and `incoming` ({ name, email? }) is a
  * different person, move the existing record and its event scores to an
  * archived id and reset `userId` to a fresh, zero-score record.
  * Returns the archived id, or null when nothing was archived.
@@ -49,7 +48,7 @@ export async function archiveIfDifferentPerson(userId, incoming) {
 
   await players.updateOne(
     { userId },
-    { $set: { xp: 0, leaves: 0, streak: 0, createdAt: now, updatedAt: now, scoreAt: now }, $unset: { phone: '', paceAt: '' } }
+    { $set: { xp: 0, leaves: 0, streak: 0, createdAt: now, updatedAt: now, scoreAt: now }, $unset: { email: '', paceAt: '' } }
   );
   console.log(`[dblingo] archived ${userId} -> ${archivedId} (new participant on shared device)`);
   return archivedId;

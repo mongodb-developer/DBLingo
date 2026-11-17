@@ -59,7 +59,7 @@ async function handleGet(req, res) {
 
   const players = await getPlayers();
   const leaders = await players
-    .find(filter, { projection: { _id: 0, company: 0, phone: 0, paceAt: 0 } })
+    .find(filter, { projection: { _id: 0, company: 0, email: 0, paceAt: 0 } })
     .sort(RANK_SORT)
     .limit(limit)
     .toArray();
@@ -115,7 +115,7 @@ async function handlePost(req, res) {
     { upsert: true }
   );
 
-  const me = await players.findOne({ userId }, { projection: { _id: 0, phone: 0, paceAt: 0 } });
+  const me = await players.findOne({ userId }, { projection: { _id: 0, email: 0, paceAt: 0 } });
   // Rank = number of players ranked strictly ahead (same order as the board), +1.
   const ahead = await players.countDocuments(aheadOf(me, me?.pack ? { pack: me.pack } : {}));
 

@@ -10,13 +10,11 @@ const COMPARISON_PACK_IDS = ['postgres'];
 /* Live leaderboards poll the backend at this interval while visible. */
 const LEADERBOARD_REFRESH_MS = 20000;
 
-/* Phone numbers: digits plus common separators, optional leading "+",
- * 7–15 digits total (E.164 max). Mirrors server/api/register.js. */
-function isValidPhone(value) {
+/* Email: simple shape check (name@domain.tld), max 254 chars.
+ * Mirrors server/api/register.js. */
+function isValidEmail(value) {
   const v = String(value || '').trim();
-  if (!/^\+?[0-9\s().-]+$/.test(v)) return false;
-  const digits = v.replace(/\D/g, '').length;
-  return digits >= 7 && digits <= 15;
+  return v.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
 }
 
 function LandingScreen({ profile, packs, onStart, event }) {
@@ -29,7 +27,7 @@ function LandingScreen({ profile, packs, onStart, event }) {
   const [draft, setDraft] = u_s({
     learnerName: profile?.learnerName || '',
     company: profile?.company || '',
-    phone: profile?.phone || '',
+    email: profile?.email || '',
     pathType: initialPathType,
     selectedPackId: profile?.selectedPackId || 'general'
   });
@@ -52,9 +50,9 @@ function LandingScreen({ profile, packs, onStart, event }) {
     setDraft(prev => ({ ...prev, pathType, selectedPackId }));
   }
 
-  const phoneValid = isValidPhone(draft.phone);
-  const showPhoneError = draft.phone.trim() !== '' && !phoneValid;
-  const canStart = draft.learnerName.trim() && draft.company.trim() && phoneValid && draft.selectedPackId;
+  const emailValid = isValidEmail(draft.email);
+  const showEmailError = draft.email.trim() !== '' && !emailValid;
+  const canStart = draft.learnerName.trim() && draft.company.trim() && emailValid && draft.selectedPackId;
   const selectedPack = packs[draft.selectedPackId] || generalPack;
 
   return (
@@ -102,19 +100,19 @@ function LandingScreen({ profile, packs, onStart, event }) {
               onChange={(e) => setDraft(prev => ({ ...prev, company: e.target.value }))}
             />
           </label>
-          <label className="ml-field" data-invalid={showPhoneError || undefined}>
-            <span>Phone</span>
+          <label className="ml-field" data-invalid={showEmailError || undefined}>
+            <span>Email</span>
             <input
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              maxLength={24}
-              value={draft.phone}
-              placeholder="+1 555 123 4567"
-              aria-invalid={showPhoneError}
-              onChange={(e) => setDraft(prev => ({ ...prev, phone: e.target.value }))}
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              maxLength={254}
+              value={draft.email}
+              placeholder="you@company.com"
+              aria-invalid={showEmailError}
+              onChange={(e) => setDraft(prev => ({ ...prev, email: e.target.value }))}
             />
-            {showPhoneError && <small className="ml-field__error">Enter a valid phone number (7–15 digits).</small>}
+            {showEmailError && <small className="ml-field__error">Enter a valid email address.</small>}
           </label>
         </div>
 
@@ -167,7 +165,7 @@ function LandingScreen({ profile, packs, onStart, event }) {
           <button
             className="ml-btn ml-btn--primary ml-btn--lg"
             disabled={!canStart}
-            onClick={() => onStart({ ...draft, learnerName: draft.learnerName.trim(), company: draft.company.trim(), phone: draft.phone.trim() })}
+            onClick={() => onStart({ ...draft, learnerName: draft.learnerName.trim(), company: draft.company.trim(), email: draft.email.trim() })}
           >
             {event ? 'Join event' : 'Start Assignment'} <Icon name="ChevronRight" size={13} color="currentColor" />
           </button>
@@ -988,7 +986,7 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
   const [draft, setDraft] = u_s({
     learnerName: profile?.learnerName || '',
     company: profile?.company || '',
-    phone: profile?.phone || ''
+    email: profile?.email || ''
   });
   const nameRef = u_r(null);
 
@@ -1000,9 +998,9 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  const phoneValid = isValidPhone(draft.phone);
-  const showPhoneError = draft.phone.trim() !== '' && !phoneValid;
-  const canSubmit = !!(draft.learnerName.trim() && draft.company.trim() && phoneValid);
+  const emailValid = isValidEmail(draft.email);
+  const showEmailError = draft.email.trim() !== '' && !emailValid;
+  const canSubmit = !!(draft.learnerName.trim() && draft.company.trim() && emailValid);
 
   function submit(e) {
     e.preventDefault();
@@ -1017,7 +1015,7 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
     onSubmit({
       learnerName: draft.learnerName.trim(),
       company: draft.company.trim(),
-      phone: draft.phone.trim(),
+      email: draft.email.trim(),
       selectedPackId: packId,
       pathType
     });
@@ -1029,7 +1027,7 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
       <p>Standings are visible to registered learners.</p>
       <div className="ml-invite">
         <Icon name="Lock" size={20} color="var(--lg-spring)" style={{ display: 'block', margin: '0 auto 10px' }} />
-        <h3>Add your name, company &amp; phone to see the standings.</h3>
+        <h3>Add your name, company &amp; email to see the standings.</h3>
         <p>
           {event
             ? <>Join <b>{event.name}</b> and see how you rank against everyone else.</>
@@ -1051,7 +1049,7 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
             <p>
               {event
                 ? <>Enter your details to compete on <b>{event.name}</b>.</>
-                : 'Enter your name, company and phone to see the standings and start ranking.'}
+                : 'Enter your name, company and email to see the standings and start ranking.'}
             </p>
             <div className="ml-form-grid">
               <label className="ml-field">
@@ -1073,19 +1071,19 @@ function LeaderboardGate({ profile, packs = {}, event, onSubmit, onChoosePath })
                   onChange={(e) => setDraft(prev => ({ ...prev, company: e.target.value }))}
                 />
               </label>
-              <label className="ml-field" data-invalid={showPhoneError || undefined}>
-                <span>Phone</span>
+              <label className="ml-field" data-invalid={showEmailError || undefined}>
+                <span>Email</span>
                 <input
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  maxLength={24}
-                  value={draft.phone}
-                  placeholder="+1 555 123 4567"
-                  aria-invalid={showPhoneError}
-                  onChange={(e) => setDraft(prev => ({ ...prev, phone: e.target.value }))}
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  maxLength={254}
+                  value={draft.email}
+                  placeholder="you@company.com"
+                  aria-invalid={showEmailError}
+                  onChange={(e) => setDraft(prev => ({ ...prev, email: e.target.value }))}
                 />
-                {showPhoneError && <small className="ml-field__error">Enter a valid phone number (7–15 digits).</small>}
+                {showEmailError && <small className="ml-field__error">Enter a valid email address.</small>}
               </label>
             </div>
             <div className="ml-event-actions">
@@ -1358,8 +1356,8 @@ function AdminEventQr({ adminKey, event, onUpdated }) {
   );
 }
 
-/* Admin-only: an event's top players with contact details (phone) so
- * organisers can reach the winners. Phone numbers are fetched from an
+/* Admin-only: an event's top players with contact details (email) so
+ * organisers can reach the winners. Emails are fetched from an
  * admin-key-protected endpoint and are never shown on the public leaderboard. */
 const ADMIN_LEADER_LIMITS = [10, 25, 50, 100];
 
@@ -1377,9 +1375,9 @@ function fmtTime(value) {
 }
 
 function downloadLeadersCsv(event, leaders) {
-  const header = ['Rank', 'Name', 'Company', 'Phone', 'Event XP', 'Best streak', 'Reached score at', 'Leaves', 'Joined'];
+  const header = ['Rank', 'Name', 'Company', 'Email', 'Event XP', 'Best streak', 'Reached score at', 'Leaves', 'Joined'];
   const rows = leaders.map(p => [
-    p.rank, p.name, p.company, p.phone, p.xp,
+    p.rank, p.name, p.company, p.email, p.xp,
     p.bestStreak ?? p.streak ?? 0,
     p.scoreAt ? new Date(p.scoreAt).toISOString() : '',
     p.leaves,
@@ -1461,7 +1459,7 @@ function AdminEventLeaders({ adminKey, event }) {
             <div className="ml-admin__table-wrap">
               <table className="ml-admin__table">
                 <thead>
-                  <tr><th>#</th><th>Name</th><th>Company</th><th>Phone</th><th className="ml-admin__num">Event XP</th><th className="ml-admin__num">Best streak</th><th>Reached at</th></tr>
+                  <tr><th>#</th><th>Name</th><th>Company</th><th>Email</th><th className="ml-admin__num">Event XP</th><th className="ml-admin__num">Best streak</th><th>Reached at</th></tr>
                 </thead>
                 <tbody>
                   {leaders.map(p => (
@@ -1469,8 +1467,8 @@ function AdminEventLeaders({ adminKey, event }) {
                       <td className="ml-admin__rank">{p.rank}</td>
                       <td>{p.name || 'Anonymous'}</td>
                       <td>{p.company || '—'}</td>
-                      <td>{p.phone
-                        ? <a href={`tel:${p.phone.replace(/[^\d+]/g, '')}`}>{p.phone}</a>
+                      <td>{p.email
+                        ? <a href={`mailto:${p.email}`}>{p.email}</a>
                         : <span className="ml-admin__muted">not provided</span>}</td>
                       <td className="ml-admin__num">{(p.xp || 0).toLocaleString()}</td>
                       <td className="ml-admin__num">{p.bestStreak ?? p.streak ?? 0}</td>

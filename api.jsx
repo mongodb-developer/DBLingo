@@ -61,11 +61,11 @@ async function apiFetch(path, options) {
   }
 }
 
-async function registerUser({ name, company, phone, pack, eventId }) {
+async function registerUser({ name, company, email, pack, eventId }) {
   if (!apiEnabled()) return null;
   return apiFetch('/register', {
     method: 'POST',
-    body: JSON.stringify({ userId: getUserId(), name, company, phone: phone || undefined, pack, eventId: eventId || undefined })
+    body: JSON.stringify({ userId: getUserId(), name, company, email: email || undefined, pack, eventId: eventId || undefined })
   });
 }
 
@@ -144,7 +144,7 @@ function listEvents(adminKey) {
   return adminFetch('/events', adminKey, { method: 'GET' });
 }
 
-/** Admin only: an event's top players including private contact details (phone).
+/** Admin only: an event's top players including private contact details (email).
  *  Never used by the public leaderboard. */
 function fetchEventLeadersAdmin(adminKey, eventId, limit = 25) {
   const qs = new URLSearchParams({ id: eventId, leaders: '1', limit: String(limit) });

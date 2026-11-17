@@ -9,7 +9,7 @@ function defaultProfile() {
   return {
     learnerName: '',
     company: '',
-    phone: '',
+    email: '',
     pathType: 'general',
     selectedPackId: 'general',
     onboardingComplete: false,
@@ -395,7 +395,7 @@ function App() {
       window.DBLingoAPI.registerUser({
         name: completeProfile.learnerName,
         company: completeProfile.company,
-        phone: completeProfile.phone,
+        email: completeProfile.email,
         pack: completeProfile.selectedPackId || 'general',
         eventId: completeProfile.eventId
       });
@@ -475,7 +475,7 @@ function App() {
       window.DBLingoAPI.registerUser({
         name: nextProfile.learnerName,
         company: nextProfile.company,
-        phone: nextProfile.phone,
+        email: nextProfile.email,
         pack: nextProfile.selectedPackId || 'general',
         eventId: event.eventId
       });
@@ -547,7 +547,7 @@ function App() {
       setState(defaultProgress());
       // Shared devices: don't pre-fill the next participant with the previous
       // person's details (event membership is kept so the booth stays on it).
-      setProfile(prev => ({ ...prev, learnerName: '', company: '', phone: '', onboardingComplete: false }));
+      setProfile(prev => ({ ...prev, learnerName: '', company: '', email: '', onboardingComplete: false }));
     } else {
       setProfile(prev => ({ ...prev, onboardingComplete: false }));
     }

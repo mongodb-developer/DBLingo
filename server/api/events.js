@@ -9,9 +9,9 @@
  *   -> { ok, events: [...] }   most recent first
  *
  * GET  ?id=<eventId>&leaders=1&limit=25   (admin only)
- *   -> { ok, event, leaders: [{ rank, userId, name, company, phone, xp, leaves, streak, joinedAt, updatedAt }] }
- *   Top players of an event *with contact details* (phone) so organisers can
- *   reach the winners. Phone numbers are only ever returned here — the public
+ *   -> { ok, event, leaders: [{ rank, userId, name, company, email, xp, leaves, streak, joinedAt, updatedAt }] }
+ *   Top players of an event *with contact details* (email) so organisers can
+ *   reach the winners. Emails are only ever returned here — the public
  *   /api/leaderboard never includes them.
  *
  * GET  ?id=<eventId>&qr=1&v=<qrVersion>   (public)
@@ -70,7 +70,7 @@ async function handleAdminLeaders(req, res, id, limitParam) {
       from: 'players',
       localField: 'userId',
       foreignField: 'userId',
-      pipeline: [{ $project: { _id: 0, phone: 1, company: 1, name: 1 } }],
+      pipeline: [{ $project: { _id: 0, email: 1, company: 1, name: 1 } }],
       as: 'player'
     } },
     { $set: { player: { $first: '$player' } } },
@@ -79,7 +79,7 @@ async function handleAdminLeaders(req, res, id, limitParam) {
       userId: 1,
       name: { $ifNull: ['$player.name', '$name'] },
       company: { $ifNull: ['$player.company', { $ifNull: ['$company', ''] }] },
-      phone: { $ifNull: ['$player.phone', ''] },
+      email: { $ifNull: ['$player.email', ''] },
       xp: 1, leaves: 1, streak: 1, bestStreak: 1, scoreAt: 1, joinedAt: 1, updatedAt: 1
     } }
   ]).toArray();

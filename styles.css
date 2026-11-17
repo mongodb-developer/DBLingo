@@ -1564,7 +1564,7 @@ html.ml-dnd-active * { cursor: grabbing !important; user-select: none !important
 .ml-invite h3 { margin: 0 0 6px; font-size: 17px; }
 .ml-invite p { margin: 0 0 14px; color: var(--ml-text-dim); }
 
-/* Leaderboard gate — shown until the learner enters name + company + phone */
+/* Leaderboard gate — shown until the learner enters name + company + email */
 .ml-lb-gate .ml-invite { margin-top: 0; }
 .ml-lb-gate__panel .ml-form-grid { text-align: left; }
 .ml-lb-gate__panel .ml-btn:disabled { opacity: 0.5; cursor: not-allowed; }
