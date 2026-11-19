@@ -205,36 +205,36 @@ const LEVEL_DOCS = {
  * Keyed by the shared world IDs so every learning pack (which clones WORLDS)
  * gets the same topical recommendations. `type` defaults to 'Skill Badge';
  * set it for anything else (e.g. a full course) so the UI labels it honestly. */
-const SKILL_BADGES_HOME = 'https://learn.mongodb.com/skills';
-const GENAI_PATH = 'https://learn.mongodb.com/learning-paths/mongodb-genai-developer';
+const SKILL_BADGES_HOME = 'https://learn.mongodb.com/skills?team=devrel';
+const GENAI_PATH = 'https://learn.mongodb.com/learning-paths/mongodb-genai-developer?team=devrel';
 
 const WORLD_SKILL_BADGES = {
   docs: [
-    { title: 'Relational to Document Model', url: 'https://learn.mongodb.com/courses/relational-to-document-model' },
-    { title: 'Schema Design Patterns and Anti-patterns', url: 'https://learn.mongodb.com/courses/schema-design-patterns-and-antipatterns' },
-    { title: 'Advanced Schema Patterns and Anti-patterns', url: 'https://learn.mongodb.com/courses/advanced-schema-patterns-and-antipatterns' },
-    { title: 'Schema Design Optimization', url: 'https://learn.mongodb.com/courses/schema-design-optimization' }
+    { title: 'Relational to Document Model', url: 'https://learn.mongodb.com/courses/relational-to-document-model?team=devrel' },
+    { title: 'Schema Design Patterns and Anti-patterns', url: 'https://learn.mongodb.com/courses/schema-design-patterns-and-antipatterns?team=devrel' },
+    { title: 'Advanced Schema Patterns and Anti-patterns', url: 'https://learn.mongodb.com/courses/advanced-schema-patterns-and-antipatterns?team=devrel' },
+    { title: 'Schema Design Optimization', url: 'https://learn.mongodb.com/courses/schema-design-optimization?team=devrel' }
   ],
   query: [
-    { title: 'CRUD Operations', url: 'https://learn.mongodb.com/courses/crud-operations-in-mongodb' }
+    { title: 'CRUD Operations', url: 'https://learn.mongodb.com/courses/crud-operations-in-mongodb?team=devrel' }
   ],
   agg: [
-    { title: 'Fundamentals of Data Transformation', url: 'https://learn.mongodb.com/courses/fundamentals-of-data-transformation' }
+    { title: 'Fundamentals of Data Transformation', url: 'https://learn.mongodb.com/courses/fundamentals-of-data-transformation?team=devrel' }
   ],
   idx: [
-    { title: 'Query Optimization', url: 'https://learn.mongodb.com/courses/query-optimization' }
+    { title: 'Query Optimization', url: 'https://learn.mongodb.com/courses/query-optimization?team=devrel' }
   ],
   atlas: [
-    { title: 'AI Data Strategy with MongoDB', url: 'https://learn.mongodb.com/courses/ai-data-strategy-with-mongodb' },
-    { title: 'Building an App with Code Agents and MongoDB', url: 'https://learn.mongodb.com/courses/building-an-app-with-code-agents-and-mongodb' },
+    { title: 'AI Data Strategy with MongoDB', url: 'https://learn.mongodb.com/courses/ai-data-strategy-with-mongodb?team=devrel' },
+    { title: 'Building an App with Code Agents and MongoDB', url: 'https://learn.mongodb.com/courses/building-an-app-with-code-agents-and-mongodb?team=devrel' },
     // No public per-badge URL found for these two; they live in the GenAI Developer path.
     { title: 'Vector Search Fundamentals', url: GENAI_PATH },
     { title: 'RAG with MongoDB', url: GENAI_PATH },
-    { title: 'AI Agents with MongoDB', url: 'https://learn.mongodb.com/courses/ai-agents-with-mongodb' },
+    { title: 'AI Agents with MongoDB', url: 'https://learn.mongodb.com/courses/ai-agents-with-mongodb?team=devrel' },
     { title: 'Memory for AI Applications with MongoDB', url: SKILL_BADGES_HOME }
   ],
   streams: [
-    { title: 'Atlas Stream Processing', url: 'https://learn.mongodb.com/courses/atlas-stream-processing', type: 'Course' }
+    { title: 'Atlas Stream Processing', url: 'https://learn.mongodb.com/courses/atlas-stream-processing?team=devrel', type: 'Course' }
   ]
 };
 
